@@ -8,7 +8,7 @@ const { spawn } = require("child_process");
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = 5000;
 
 function camelToSnakeMiddleware(req, res, next) {
   const transformKeys = (obj) => {
