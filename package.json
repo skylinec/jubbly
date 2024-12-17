@@ -34,7 +34,7 @@
     "web-vitals": "^2.1.0"
   },
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "start": "concurrently \"yarn run server\" \"yarn run client\"",
     "client": "react-scripts start",
     "server": "node src/server.js",
     "build": "react-scripts build",
@@ -61,7 +61,8 @@
   },
   "devDependencies": {
     "@types/react-bootstrap": "^0.32.37",
-    "@types/svg-path-parser": "^1.1.6"
+    "@types/svg-path-parser": "^1.1.6",
+    "concurrently": "^9.1.0"
   },
   "engines": {
     "node": "22"
