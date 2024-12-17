@@ -1,0 +1,64 @@
+/* App.css */
+body, html {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+}
+
+.App {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh; /* Full height layout */
+}
+
+.App > .PageHeader {
+  flex-shrink: 0;
+}
+
+.App > .job-application-content {
+  flex-grow: 1; /* Take available space */
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.PageHeader {
+  flex-shrink: 0; /* Prevent collapsing */
+}
+
+.AppRoutes {
+  flex-grow: 1; /* Take remaining space */
+  margin: 0 auto; /* Center the content */
+}
+
+/* Default Light Theme */
+body.light-theme {
+  --bg-color: #ffffff;
+  --text-color: #000000;
+  --link-color: #007bff;
+  --table-bg: #f8f9fa;
+}
+
+body {
+  background-color: var(--bg-color);
+  /* color: var(--text-color); */
+  min-height: 100vh; /* Ensure full coverage */
+}
+
+body.dark-theme {
+  background-color: #121212;
+}
+
+/* Update table and other components as needed
+.table {
+  background-color: var(--table-bg);
+  color: var(--text-color);
+}
+
+.navbar {
+  transition: background-color 0.3s;
+} */

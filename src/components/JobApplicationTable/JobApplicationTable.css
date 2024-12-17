@@ -1,0 +1,303 @@
+/* General Styling */
+.bg-light {
+  background-color: #f8f9fa;
+  border-top: 1px solid #dee2e6;
+}
+
+.p-3 {
+  padding: 1rem;
+}
+
+/* Highlight the selected row */
+.table-row-focused {
+  background-color: rgba(0, 123, 255, 0.2); /* Light blue for focus */
+  transition: background-color 0.3s ease;
+  outline: 2px solid #007bff; /* Blue border for focus */
+  outline-offset: -2px;
+}
+
+/* Highlight the selected card */
+.card-focused {
+  background-color: rgba(0, 123, 255, 0.2); /* Light blue background */
+  border: 2px solid #007bff; /* Blue border */
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  box-shadow: 0 0 10px rgba(0, 123, 255, 0.5); /* Optional shadow for focus */
+}
+
+/* Filter Buttons */
+.filter-buttons .btn {
+  margin: 0 5px;
+  transition: transform 0.3s ease, background-color 0.3s ease;
+}
+
+.filter-buttons .btn:hover {
+  transform: scale(1.05);
+  background-color: #0056b3;
+}
+
+.filter-search-container {
+  position: relative; /* Default position */
+  background: white;
+  z-index: 10;
+  border-bottom: 1px solid #ddd;
+  transition: all 0.3s ease;
+}
+
+.filter-search-container.sticky {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000; /* Ensure it stays above other content */
+  background: white; /* Ensure it is visually clear */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Add shadow for effect */
+}
+
+/* Dark Mode Filter Search Container */
+.job-application-table.dark .filter-search-container {
+  background-color: #222;
+  color: #ffffff;
+  border-color: #444;
+}
+
+/* React-Select Dropdown Styling */
+.react-select__control {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+.job-application-table.dark .react-select__control {
+  background-color: #333;
+  color: #e0e0e0;
+  border: 1px solid #555;
+}
+
+.react-select__menu {
+  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.job-application-table.dark .react-select__menu,
+.job-application-table.dark .react-select__menu-list {
+  background-color: #222;
+  color: #000000;
+  border: 1px solid #444;
+}
+
+.job-application-table.dark .react-select__option {
+  background-color: #222;
+  color: #000000;
+}
+
+.job-application-table.dark .react-select__option--is-selected {
+  background-color: #444;
+  color: #ffffff;
+}
+
+.job-application-table.dark .react-select__option--is-focused {
+  background-color: #555;
+  color: #ffffff;
+}
+
+/* Suggestions Dropdown */
+.job-application-table.dark ul {
+  background-color: #222;
+  color: #000000;
+  border: 1px solid #444;
+}
+
+.job-application-table.dark ul li {
+  background-color: #222;
+  color: #000000;
+}
+
+.job-application-table.dark ul li:hover {
+  background-color: #444;
+  color: #ffffff;
+}
+
+/* Dark Mode Global Styles */
+body.dark-mode {
+  background-color: #121212;
+  color: #e0e0e0;
+}
+
+/* Job Application Table */
+.job-application-table {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.job-application-table.dark {
+  background-color: #121212;
+  color: #e0e0e0;
+}
+
+/* Table Styling */
+.table {
+  table-layout: auto;
+  width: 100%;
+  border-collapse: collapse;
+  animation: fadeIn 0.3s ease;
+  position: relative; /* Ensure the table has a positioning context */
+}
+
+.table th,
+.table td {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  padding: 8px;
+  text-align: left;
+  border: 1px solid #dee2e6;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Floating Save and Cancel Buttons */
+.save-cancel-buttons {
+  position: absolute;
+  z-index: 1050; /* Above the table content */
+  background: #ffffff; /* White background for visibility */
+  border: 1px solid #ddd; /* Light border */
+  padding: 5px;
+  border-radius: 5px;
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+}
+
+/* Dark Mode Support */
+.job-application-table.dark .save-cancel-buttons {
+  background: #333333; /* Dark background for visibility */
+  color: #ffffff; /* Light text */
+  border-color: #555555; /* Darker border */
+}
+
+/* Fixed Save and Cancel Buttons */
+.fixed-save-cancel-buttons {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1050; /* Above all content */
+  display: flex;
+  gap: 10px;
+}
+
+/* Button Styling for Better Accessibility */
+.fixed-save-cancel-buttons button {
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+}
+
+/* Dark Mode Support */
+.job-application-table.dark .fixed-save-cancel-buttons {
+  background: transparent; /* No background needed */
+}
+
+.job-application-table.dark .fixed-save-cancel-buttons button {
+  background-color: #444;
+  color: #fff;
+  border: 1px solid #555;
+}
+
+/* Hover Effect for Table */
+.table-hover tbody tr:hover {
+  background-color: #f1f1f1;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.job-application-table.dark .table-hover tbody tr:hover {
+  background-color: #444;
+  color: #ffffff;
+}
+
+/* Dark Mode for Table */
+.job-application-table.dark .table {
+  background-color: #1e1e1e;
+  color: #e0e0e0;
+  border: 1px solid #444;
+}
+
+.job-application-table.dark .table th {
+  background-color: #333;
+  color: #ffffff;
+  border-bottom: 2px solid #444;
+}
+
+.job-application-table.dark .table td {
+  background-color: #222;
+  color: #cccccc;
+  border-color: #444;
+}
+
+/* Card Styling */
+.card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.job-application-table.dark .card {
+  background-color: #2a2a2a;
+  color: #ffffff;
+  border-color: #444;
+}
+
+.job-application-table.dark .card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+}
+
+.job-application-table.dark .card .card-header {
+  background-color: #333;
+  color: #000000;
+  border-bottom: 1px solid #444;
+}
+
+.job-application-table.dark .card .card-header:hover {
+  background-color: #444;
+  color: #ffffff;
+}
+
+/* Modal Styling */
+.modal-content {
+  background-color: #1e1e1e;
+  color: #ffffff;
+}
+
+/* Pagination Styling */
+.job-application-table.dark .pagination {
+  background-color: #333;
+  color: #ffffff;
+}
+
+.job-application-table.dark .pagination a {
+  color: #007bff;
+}
+
+.job-application-table.dark .pagination a:hover {
+  color: #0056b3;
+}
+
+table tbody tr {
+  transition: background-color 0.2s ease-in-out;
+}
+
+table tbody tr:hover {
+  background-color: rgba(0, 123, 255, 0.1);
+}
+
+table tbody tr.focused {
+  background-color: rgba(0, 123, 255, 0.2);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
