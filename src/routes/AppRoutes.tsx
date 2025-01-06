@@ -1,25 +1,20 @@
-import React from "react";
-import { Routes, Route } from "react-router-dom";
-import JobApplicationTable from "../components/JobApplicationTable/JobApplicationTable";
+import React from 'react';
+import { Routes, Route } from 'react-router-dom';
+import JobApplicationTable from '../components/JobApplicationTable/JobApplicationTable';
+import InterviewCalendar from '../components/InterviewCalendar/InterviewCalendar';
 
-const AppRoutes: React.FC<{
-  showAddApplicationModal: boolean;
-  onCloseAddApplicationModal: () => void;
+interface AppRoutesProps {
   darkMode: boolean;
-}> = ({ showAddApplicationModal, onCloseAddApplicationModal, darkMode }) => {
+}
+
+const AppRoutes: React.FC<AppRoutesProps> = ({ darkMode }) => {
   return (
     <Routes>
-      <Route
-        path="/"
-        element={
-          <JobApplicationTable
-            showAddApplicationModal={showAddApplicationModal}
-            onCloseAddApplicationModal={onCloseAddApplicationModal}
-            darkMode={darkMode}
-          />
-        }
+      <Route path="/" element={<JobApplicationTable darkMode={darkMode} />} />
+      <Route 
+        path="/calendar" 
+        element={<InterviewCalendar darkMode={darkMode} />} 
       />
-      {/* Add more routes as needed */}
     </Routes>
   );
 };

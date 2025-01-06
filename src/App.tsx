@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import "./App.css";
 import JobApplicationTable from "./components/JobApplicationTable/JobApplicationTable";
 import PageHeader from "./components/PageHeader/PageHeader";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-
+import { BrowserRouter as Router } from "react-router-dom";
 import { useDarkMode } from "./hooks/useDarkMode";
 import AppRoutes from "./routes/AppRoutes";
-import { ModalProvider, useModalContext } from "./context/ModalContext";
+import { ModalProvider } from "./context/ModalContext";
+import { ApplicationProvider } from "./context/ApplicationContext";
 
 const App: React.FC = () => {
   const [darkMode, toggleDarkMode] = useDarkMode();
-
-  const [showAddApplicationModal, setShowAddApplicationModal] = useState(false);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -19,27 +17,16 @@ const App: React.FC = () => {
     localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
-  const handleShowAddApplicationModal = () => {
-    setShowAddApplicationModal(true);
-  };
-
-  const handleCloseAddApplicationModal = () => {
-    setShowAddApplicationModal(false);
-  };
-
   return (
     <ModalProvider>
-      <Router>
-        <div className="App">
-          <PageHeader
-            darkMode={darkMode}
-            onToggleDarkMode={toggleDarkMode}
-          />
-          <AppRoutes showAddApplicationModal={showAddApplicationModal}
-            onCloseAddApplicationModal={handleCloseAddApplicationModal}
-            darkMode={darkMode} />
-        </div>
-      </Router>
+      <ApplicationProvider>
+        <Router>
+          <div className="App">
+            <PageHeader darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
+            <AppRoutes darkMode={darkMode} />
+          </div>
+        </Router>
+      </ApplicationProvider>
     </ModalProvider>
   );
 };

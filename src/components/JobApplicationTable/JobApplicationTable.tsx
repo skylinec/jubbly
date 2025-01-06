@@ -29,41 +29,16 @@ import "react-toastify/dist/ReactToastify.css";
 import { useNavigate, useLocation } from "react-router-dom";
 
 import { useModalContext } from "../../context/ModalContext";
+import { useApplicationContext } from "../../context/ApplicationContext";
 
 import StatisticsModal from "../StatisticsModal/StatisticsModal"; // Adjust the path as needed
 
+import { JobApplication } from "../../types/jobApplication";
+import { Company } from "../../types/company";
+
+// Remove the local JobApplication interface definition
 interface JobApplicationTableProps {
-  showAddApplicationModal: boolean;
-  onCloseAddApplicationModal: () => void;
-  darkMode: boolean; // Add darkMode prop
-}
-
-interface JobApplication {
-  id?: number;
-  employer: string;
-  jobTitle: string;
-  cityTown: string;
-  year: number;
-  generalRole: string;
-  jobLevel: string;
-  dateAppNotif: string;
-  lastUpdate: string;
-  daNow: number;
-  daLu: number;
-  luNow: number;
-  upcomingInterviewDate?: string | undefined; // Ensure compatibility
-  lastCompletedStage: string;
-  notes?: string;
-  external: string;
-  jobDescription?: string;
-  companyWebsite?: string;
-  roleLink?: string;
-  sector?: string; // Optional to ensure backward compatibility
-}
-
-interface Company {
-  name: string;
-  companyWebsite?: string;
+  darkMode: boolean;
 }
 
 function combineRefs<T>(
@@ -96,17 +71,26 @@ const jobStatuses = [
 ];
 
 const statusColors: { [key: string]: string } = {
-  Applied: "#e7f0fe",
-  "Recruiter Conversation/Screening": "#e2ffd9",
-  "Interview Offered": "#d1f7c4",
-  "Online Assessment": "#a8ed91",
-  "In-Person Assessment": "#6fd94c",
-  "Interview 1": "#c4f0f7",
-  "Interview 2": "#c4e4f7",
-  "Interview 3": "#c4c7f7",
-  Ghosted: "#f7d4c4",
-  Rejected: "#f7c4c4",
-  "Other (Custom)": "#f5f5f5",
+  // Initial Application Stage - Soft Blues
+  Applied: "#f0f4f8",
+  "Recruiter Conversation/Screening": "#90caf9",
+
+  // Assessment Stage - Muted Purples
+  "Online Assessment": "#ce93d8",
+  "In-Person Assessment": "#b39ddb",
+
+  // Interview Stage - Warm to Cool progression
+  "Interview Offered": "#ffcc80",
+  "Interview 1": "#fff176",
+  "Interview 2": "#a5d6a7",
+  "Interview 3": "#80cbc4",
+
+  // Negative Outcomes - Soft Reds
+  Ghosted: "#ffab91",
+  Rejected: "#ef9a9a",
+
+  // Other
+  "Other (Custom)": "#b0bec5",
 };
 
 const jobLevelOptions = [
@@ -155,25 +139,73 @@ const generateYearOptions = () => {
 
 const yearOptions = generateYearOptions();
 
-const fetchCompanyFavicon = (company: Company): string => {
-  if (company.companyWebsite) {
-    // Extract domain
+/**
+ * An interface that both JobApplication and Company can satisfy:
+ * - 'name': the fallback domain name
+ * - 'companyWebsite': an optional URL
+ */
+interface HasWebsiteAndName {
+  name: string;
+  companyWebsite?: string;
+}
+
+/**
+ * If the string doesn't start with http(s), prepend 'https://'
+ */
+function normalizeURL(urlString: string): string {
+  if (urlString && !/^https?:\/\//i.test(urlString)) {
+    return `https://${urlString}`;
+  }
+  return urlString;
+}
+
+/**
+ * A generic favicon fetcher that works for any object
+ * with 'name' and optionally 'companyWebsite'.
+ */
+export function fetchFavicon<T extends HasWebsiteAndName>(obj: T): string {
+  // 1. Try using companyWebsite if present
+  if (obj.companyWebsite) {
+    const domainString = normalizeURL(obj.companyWebsite);
     try {
-      const url = new URL(company.companyWebsite);
+      const url = new URL(domainString);
       return `https://www.google.com/s2/favicons?sz=64&domain=${url.hostname}`;
     } catch (e) {
-      // Invalid URL fallback
+      console.error("Invalid URL:", domainString, e);
+      // Fall through to fallback
     }
   }
-  const normalizedEmployer = company.name.replace(/\s+/g, "").toLowerCase();
-  return `https://www.google.com/s2/favicons?sz=64&domain=${normalizedEmployer}.com`;
+
+  // 2. Fallback to something like 'obj.name'.com
+  const normalizedName = obj.name.replace(/\s+/g, "").toLowerCase();
+  const fallback = `https://www.google.com/s2/favicons?sz=64&domain=${normalizedName}.com`;
+
+  // 3. Optional final fallback to a local default icon:
+  // return fallback || "/path/to/default-icon.png";
+
+  return fallback;
+}
+
+const getDefaultValue = {
+  string: (value?: string) => value || "",
+  number: (value?: number) => value ?? 0,
+  date: (value?: string) => value || new Date().toISOString().split("T")[0],
 };
 
 const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
-  showAddApplicationModal,
-  onCloseAddApplicationModal,
   darkMode,
 }) => {
+  const { showAddApplicationModal, closeAddApplicationModal } =
+    useModalContext();
+  const {
+    newApplication,
+    setNewApplication,
+    handleSaveNewApplication,
+    allApplications,
+    loading,
+    refreshApplications,
+  } = useApplicationContext();
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -182,7 +214,6 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<Partial<JobApplication>>({});
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   // const [filter, setFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{
@@ -192,6 +223,13 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     key: null,
     direction: "asc",
   });
+
+  // Add these at the top with other useRefs
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const initialOffset = useRef<number | null>(null);
+
+  // Add these with other useState declarations
+  const [isSticky, setIsSticky] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [selectedNotes, setSelectedNotes] = useState<string | null>(null);
@@ -208,6 +246,12 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     useState<JobApplication | null>(null);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [modalEditMode, setModalEditMode] = useState(false);
+
+  interface CompanyLike {
+    name: string;
+    companyWebsite?: string;
+    applicationCount: number;
+  }
 
   const [companies, setCompanies] = useState<Company[]>([]);
 
@@ -236,30 +280,6 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     [Date | undefined, Date | undefined]
   >([undefined, undefined]);
 
-  const [newApplication, setNewApplication] = useState<Partial<JobApplication>>(
-    {
-      employer: "",
-      jobTitle: "",
-      cityTown: "",
-      year: new Date().getFullYear(),
-      generalRole: "",
-      jobLevel: "",
-      dateAppNotif: new Date().toISOString().split("T")[0],
-      lastUpdate: new Date().toISOString().split("T")[0],
-      daNow: 0,
-      daLu: 0,
-      luNow: 0,
-      upcomingInterviewDate: undefined,
-      lastCompletedStage: "Applied",
-      notes: "",
-      external: "No",
-      jobDescription: "",
-      companyWebsite: "",
-      roleLink: "",
-      sector: "",
-    }
-  );
-
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const searchSelectRef = useRef<any>(null); // React-select uses 'any' for its ref
@@ -275,6 +295,12 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  const [useFilteredData, setUseFilteredData] = useState(false);
+
+  const handleBlur = () => {
+    setIsSearchFocused(false);
+  };
+
   useEffect(() => {
     if (editingRow && editingRef.current) {
       const rect = editingRef.current.getBoundingClientRect();
@@ -289,6 +315,12 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
   const [allJobApplications, setAllJobApplications] = useState<
     JobApplication[]
   >([]);
+
+  // const [useFilteredData, setUseFilteredData] = useState(false);
+
+  // const onChange = (event) => {
+  //   setUseFilteredData(event.target.checked);
+  // };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -383,17 +415,20 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     setShowShortcutsModal,
   ]);
 
+  useEffect(() => {
+    const handleAddApplicationEvent = () => {
+      handleAddRow();
+    };
+
+    window.addEventListener("addApplication", handleAddApplicationEvent);
+    return () => {
+      window.removeEventListener("addApplication", handleAddApplicationEvent);
+    };
+  }, []); // Add necessary dependencies if handleAddRow uses any state
+
   const handleFocus = () => {
     setIsSearchFocused(true);
   };
-
-  const handleBlur = () => {
-    setIsSearchFocused(false);
-  };
-
-  const [isSticky, setIsSticky] = useState(false);
-  const searchContainerRef = useRef<HTMLDivElement | null>(null);
-  const initialOffset = useRef<number | null>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -508,92 +543,8 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
   ]);
 
   useEffect(() => {
-    const fetchApplications = async () => {
-      try {
-        const response = await axios.get(API_URL);
-        console.log("Backend API Response:", response.data); // Debug log
-        const formattedData: JobApplication[] = response.data.map(
-          (application: any, index: number) => ({
-            id: application.id || application._id || index, // Use index as fallback
-            employer: application.employer || "", // Default to empty string
-            jobTitle: application.job_title || "",
-            cityTown: application.city_town || "",
-            year: application.year || new Date().getFullYear(),
-            generalRole: application.general_role || "",
-            jobLevel: application.job_level || "",
-            dateAppNotif: application.date_app_notif || "",
-            lastUpdate: application.last_update || "",
-            daNow: application.da_now || 0,
-            daLu: application.da_lu || 0,
-            luNow: application.lu_now || 0,
-            upcomingInterviewDate:
-              application.upcoming_interview_date || undefined,
-            lastCompletedStage: application.last_completed_stage || "",
-            notes: application.notes || "",
-            external: application.external || "No",
-            jobDescription: application.job_description || "",
-            companyWebsite: application.company_website || "",
-            roleLink: application.role_link || "",
-            sector: application.sector || "",
-          })
-        );
-
-        setAllJobApplications(formattedData); // Store all applications
-        setJobApplications(formattedData);
-
-        // Populate allSuggestions with unique values by category
-        const suggestionsSet: { [key: string]: Set<string> } = {
-          Employer: new Set(),
-          City: new Set(),
-          JobTitle: new Set(),
-          GeneralRole: new Set(),
-          JobLevel: new Set(),
-          Sector: new Set(),
-        };
-
-        formattedData.forEach((app) => {
-          if (app.employer) suggestionsSet.Employer.add(app.employer);
-          if (app.cityTown) suggestionsSet.City.add(app.cityTown);
-          if (app.jobTitle) suggestionsSet.JobTitle.add(app.jobTitle);
-          if (app.generalRole) suggestionsSet.GeneralRole.add(app.generalRole);
-          if (app.jobLevel) suggestionsSet.JobLevel.add(app.jobLevel);
-          if (app.sector) suggestionsSet.Sector.add(app.sector);
-        });
-
-        const suggestionsArray = Object.entries(suggestionsSet).flatMap(
-          ([type, values]) =>
-            Array.from(values).map((value) => ({ value, label: value, type }))
-        );
-
-        setAllSuggestions(suggestionsArray);
-        console.log("All Suggestions:", suggestionsArray);
-
-        const companyMap = new Map<
-          string,
-          { name: string; companyWebsite?: string }
-        >();
-        for (const app of formattedData) {
-          // If we haven't stored this company yet, store it now
-          if (!companyMap.has(app.employer)) {
-            companyMap.set(app.employer, {
-              name: app.employer,
-              companyWebsite: app.companyWebsite,
-            });
-          }
-        }
-
-        setCompanies(Array.from(companyMap.values()));
-      } catch (error) {
-        toast.error("Failed to fetch job applications. Please try again.", {
-          position: "top-center",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchApplications();
-  }, []);
+    setJobApplications(allApplications);
+  }, [allApplications]);
 
   useEffect(() => {
     const updateButtonPosition = () => {
@@ -697,47 +648,73 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     });
   };
 
+  // Add this function near your other utility functions
+  const ensureValidDateTime = (
+    dateString: string | undefined
+  ): string | undefined => {
+    if (!dateString) return undefined;
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return undefined;
+    // Set default time to 9 AM if no time is specified
+    if (date.getHours() === 0) {
+      date.setHours(9, 0, 0);
+    }
+    return date.toISOString();
+  };
+
   const handleSaveApplication = async (
     application: JobApplication | Partial<JobApplication>,
     isNew: boolean = false
   ) => {
     try {
-      const response = isNew
-        ? await axios.post(API_URL, application)
-        : await axios.put(`${API_URL}/${application.id}`, application);
+      const updatedApplication = {
+        ...application,
+        upcomingInterviewDate: ensureValidDateTime(
+          application.upcomingInterviewDate
+        ),
+      };
 
-      const updatedApplication: JobApplication = {
-        id: isNew ? response.data.id : application.id!,
-        employer: application.employer || "",
-        jobTitle: application.jobTitle || "",
-        cityTown: application.cityTown || "",
-        year: application.year || new Date().getFullYear(),
-        generalRole: application.generalRole || "",
-        jobLevel: application.jobLevel || "",
-        dateAppNotif: application.dateAppNotif || "",
-        lastUpdate: application.lastUpdate || "",
-        daNow: application.daNow || 0,
-        daLu: application.daLu || 0,
-        luNow: application.luNow || 0,
-        upcomingInterviewDate: application.upcomingInterviewDate || undefined,
-        lastCompletedStage: application.lastCompletedStage || "",
-        notes: application.notes || "",
-        external: application.external || "No",
-        jobDescription: application.jobDescription || "",
-        companyWebsite: application.companyWebsite || "",
-        roleLink: application.roleLink || "",
-        sector: application.sector || "",
+      const response = isNew
+        ? await axios.post(API_URL, updatedApplication)
+        : await axios.put(
+            `${API_URL}/${updatedApplication.id}`,
+            updatedApplication
+          );
+
+      const savedApplication: JobApplication = {
+        id: isNew ? response.data.id : updatedApplication.id!,
+        employer: updatedApplication.employer || "",
+        jobTitle: updatedApplication.jobTitle || "",
+        cityTown: updatedApplication.cityTown || "",
+        year: updatedApplication.year || new Date().getFullYear(),
+        generalRole: updatedApplication.generalRole || "",
+        jobLevel: updatedApplication.jobLevel || "",
+        dateAppNotif: updatedApplication.dateAppNotif || "",
+        lastUpdate: updatedApplication.lastUpdate || "",
+        daNow: updatedApplication.daNow || 0,
+        daLu: updatedApplication.daLu || 0,
+        luNow: updatedApplication.luNow || 0,
+        upcomingInterviewDate:
+          updatedApplication.upcomingInterviewDate || undefined,
+        lastCompletedStage: updatedApplication.lastCompletedStage || "",
+        notes: updatedApplication.notes || "",
+        external: updatedApplication.external || "No",
+        jobDescription: updatedApplication.jobDescription || "",
+        companyWebsite: updatedApplication.companyWebsite || "",
+        roleLink: updatedApplication.roleLink || "",
+        sector: updatedApplication.sector || "",
       };
 
       // Update the job applications state
       setJobApplications((prev) =>
         isNew
-          ? [...prev, updatedApplication]
+          ? [...prev, savedApplication]
           : prev.map((app) =>
-              app.id === updatedApplication.id ? updatedApplication : app
+              app.id === savedApplication.id ? savedApplication : app
             )
       );
 
+      await refreshApplications(); // Refresh applications after saving
       setEditingRow(null);
       toast.success(`Application ${isNew ? "added" : "updated"} successfully!`);
     } catch (error) {
@@ -746,7 +723,11 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     }
   };
 
-  const handleModalSave = () => handleSaveApplication(selectedApplication!);
+  const handleModalSave = () => {
+    handleSaveApplication(selectedApplication!);
+
+    setShowInfoModal(false);
+  };
   const handleSaveRow = () =>
     handleSaveApplication(editValues as JobApplication);
 
@@ -759,7 +740,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
   //       employer: newApplication.employer || "", // Default to an empty string
   //       jobTitle: newApplication.jobTitle || "",
   //       cityTown: newApplication.cityTown || "",
-  //       year: newApplication.year || new Date().getFullYear(),
+  //       year: new Date().getFullYear(),
   //       generalRole: newApplication.generalRole || "",
   //       jobLevel: newApplication.jobLevel || "",
   //       dateAppNotif:
@@ -899,6 +880,87 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     );
   };
 
+  const filteredApplications = jobApplications.filter((app) => {
+    return matchesFilters(app);
+  });
+
+  const findNewApplicationIndex = (
+    application: JobApplication,
+    applications: JobApplication[],
+    sortConfig: { key: keyof JobApplication | null; direction: "asc" | "desc" }
+  ): number => {
+    // First filter and sort the list
+    const sortedList = [...applications].sort((a, b) => {
+      if (!sortConfig.key) return 0;
+      const aVal = String(a[sortConfig.key]);
+      const bVal = String(b[sortConfig.key]);
+      return sortConfig.direction === "asc"
+        ? aVal.localeCompare(bVal)
+        : bVal.localeCompare(aVal);
+    });
+
+    // Find index of new application
+    return sortedList.findIndex((app) => app.id === application.id);
+  };
+
+  function fetchCompaniesWithAppCountLocally(
+    jobApps: JobApplication[]
+  ): CompanyLike[] {
+    const companiesMap = new Map<string, CompanyLike>();
+
+    jobApps.forEach((app) => {
+      const employer = app.employer.trim();
+      if (!companiesMap.has(employer)) {
+        companiesMap.set(employer, {
+          name: employer,
+          companyWebsite: app.companyWebsite, // take first encountered website
+          applicationCount: 1,
+        });
+      } else {
+        const existing = companiesMap.get(employer)!;
+        existing.applicationCount += 1;
+        // Optionally, update the website if this app has one and we haven't stored it yet
+        if (!existing.companyWebsite && app.companyWebsite) {
+          existing.companyWebsite = app.companyWebsite;
+        }
+      }
+    });
+
+    return Array.from(companiesMap.values());
+  }
+
+  /**
+   * Build a unique list of "companies" from the given job apps.
+   */
+  function getCompaniesFromJobApps(jobApps: JobApplication[]): CompanyLike[] {
+    return fetchCompaniesWithAppCountLocally(jobApps);
+  }
+
+  async function fetchCompaniesWithAppCount(): Promise<
+    { name: string; companyWebsite?: string; applicationCount: number }[]
+  > {
+    try {
+      const response = await axios.get(
+        "http://10.0.0.101:5000/companies?withCounts=true"
+      );
+      // The data should be an array of objects with { name, companyWebsite?, applicationCount } at least.
+      return response.data;
+    } catch (err) {
+      console.error("Failed to fetch companies with counts", err);
+      return []; // Return empty array if error
+    }
+  }
+
+  useEffect(() => {
+    if (currentDataType === "companies") {
+      // Produce the "companies" array from the job apps
+      const localCompanies = getCompaniesFromJobApps(jobApplications);
+      setCompanies(localCompanies);
+    }
+  }, [jobApplications, currentDataType]);
+
+  const [newApplicationId, setNewApplicationId] = useState<number | null>(null);
+
   const handleAddRow = async () => {
     const newApplication: JobApplication = {
       employer: "",
@@ -926,35 +988,52 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
       const response = await axios.post(API_URL, newApplication);
       const savedApplication = { ...newApplication, id: response.data.id };
 
-      // Add to jobApplications
+      setAllJobApplications((prev) => [...prev, savedApplication]);
       setJobApplications((prev) => [...prev, savedApplication]);
+      setEditingRow(savedApplication.id!);
+      setEditValues(savedApplication);
+      setNewApplicationId(savedApplication.id!); // Track the new application
 
-      // Dynamically recalculate filteredApplications
-      if (matchesFilters(savedApplication)) {
-        // Optionally trigger UI changes for visibility
-        setEditingRow(savedApplication.id!);
-        setEditValues(savedApplication); // Pre-fill the editing values
-        setTimeout(() => {
-          const newRowIndex = jobApplications.findIndex(
-            (app) => app.id === savedApplication.id
-          );
-          const row = tableRowRefs.current[newRowIndex];
-          bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, 100); // Wait for the table to update
-        toast.success("New application added and matches filters!", {
-          position: "top-center",
-        });
-      } else {
-        toast.info(
-          "New application added but doesn't match current filters. Adjust filters to see it.",
-          { position: "top-center" }
-        );
-      }
+      toast.success("New application added successfully!");
     } catch (error) {
       console.error("Error adding new application:", error);
       toast.error("Failed to add new application. Please try again.");
     }
   };
+
+  // Add new effect for handling scrolling
+  useEffect(() => {
+    if (!newApplicationId) return;
+
+    // Find application in filtered and sorted list
+    const index = filteredApplications.findIndex(
+      (app) => app.id === newApplicationId
+    );
+
+    if (index === -1) {
+      toast.info("New application added but hidden by current filters");
+      setNewApplicationId(null);
+      return;
+    }
+
+    // Use setTimeout to ensure DOM is ready
+    setTimeout(() => {
+      if (viewMode === "table") {
+        const row = tableRowRefs.current[index];
+        if (row) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+          setFocusedIndex(index);
+        }
+      } else {
+        const card = cardRefs.current[index];
+        if (card) {
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
+          setFocusedCardIndex(index);
+        }
+      }
+      setNewApplicationId(null); // Reset after scrolling
+    }, 100);
+  }, [newApplicationId, filteredApplications, viewMode]);
 
   const handleDeleteRow = async () => {
     if (!deleteTargetId) return;
@@ -1027,6 +1106,26 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     const application = jobApplications.find((app) => app.id === id);
     const currentValue = editValues[field] || application?.[field] || "";
 
+    // Handle complex object fields
+    const getDisplayValue = (value: any): string => {
+      if (!value) return "";
+
+      // Handle salary object
+      if (field === "salary" && typeof value === "object") {
+        return `${value.currency || "£"}${value.min || 0} - ${
+          value.currency || "£"
+        }${value.max || 0}`;
+      }
+
+      // Handle arrays (interviewHistory, contacts)
+      if (Array.isArray(value)) {
+        return JSON.stringify(value);
+      }
+
+      // Handle primitive values
+      return String(value);
+    };
+
     if (type === "text") {
       const isSuggestionField = [
         "employer",
@@ -1039,7 +1138,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
         <div style={{ position: "relative", width: "100%" }}>
           <Form.Control
             type="text"
-            value={currentValue}
+            value={getDisplayValue(currentValue)}
             onChange={(e) => {
               handleEditChange(field, e.target.value);
 
@@ -1172,7 +1271,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     return (
       <Form.Control
         type={type}
-        value={currentValue}
+        value={getDisplayValue(currentValue)}
         onChange={(e) =>
           handleEditChange(
             field,
@@ -1191,10 +1290,6 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     const company = companies.find((c) => c.name === job.employer);
     return company || { name: job.employer };
   }
-
-  const filteredApplications = jobApplications.filter((app) => {
-    return matchesFilters(app);
-  });
 
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 
@@ -1344,9 +1439,9 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
           } else if (event.key === "ArrowRight") {
             nextIndex = Math.min(currentIndex + 1, totalItems - 1); // Navigate right
           } else if (event.key === "Enter") {
-            const selectedApplication = filteredApplications[currentIndex];
+            const selectedApplication = sortedApplications[currentIndex]; // Use sortedApplications instead of filteredApplications
             if (selectedApplication) {
-              handleEditRow(selectedApplication.id!); // Enter edit mode for the selected card
+              handleEditRow(selectedApplication.id!);
             }
             return currentIndex;
           }
@@ -1358,7 +1453,14 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [sortedApplications, handleEditRow]);
+  }, [
+    sortedApplications,
+    handleEditRow,
+    viewMode,
+    columns,
+    editingRow,
+    cancelEdit,
+  ]);
 
   useEffect(() => {
     if (editingRow !== null) {
@@ -1494,6 +1596,19 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
 
   const tableRowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
+  const formatDateUK = (date: string | null | undefined): string => {
+    if (!date) return "N/A";
+    try {
+      return new Date(date).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+    } catch {
+      return "N/A";
+    }
+  };
+
   const renderTable = (darkMode: boolean) => {
     if (currentDataType === "applications") {
       return (
@@ -1575,7 +1690,9 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                 <tr
                   key={job.id}
                   ref={combineRefs(
-                    (el) => (tableRowRefs.current[index] = el), // Ref for scrolling
+                    (el) => {
+                      tableRowRefs.current[index] = el;
+                    }, // Ref for scrolling
                     editingRow === job.id
                       ? (editingRef as React.RefObject<HTMLTableRowElement>) // Existing ref
                       : undefined
@@ -1600,9 +1717,10 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                 >
                   <td>
                     <img
-                      src={fetchCompanyFavicon(
-                        getCompanyForJob(job, companies)
-                      )}
+                      src={fetchFavicon({
+                        name: job.employer, // pass employer as 'name'
+                        companyWebsite: job.companyWebsite,
+                      })}
                       alt="favicon"
                       style={{ width: 24, height: 24 }}
                     />
@@ -1715,15 +1833,15 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       <td>{job.year}</td>
                       <td>{highlightMatch(job.generalRole, searchQuery)}</td>
                       <td>{highlightMatch(job.jobLevel, searchQuery)}</td>
-                      <td>{job.dateAppNotif || "N/A"}</td>
-                      <td>{job.lastUpdate || "N/A"}</td>
+                      <td>{formatDateUK(job.dateAppNotif)}</td>
+                      <td>{formatDateUK(job.lastUpdate)}</td>
                       <td style={{ backgroundColor }}>
                         {job.dateAppNotif ? daysSinceApplied : "N/A"}
                       </td>
                       <td>
                         {calculateDaysBetween(job.dateAppNotif, job.lastUpdate)}
                       </td>
-                      <td>{job.upcomingInterviewDate || "N/A"}</td>
+                      <td>{formatDateUK(job.upcomingInterviewDate)}</td>
                       <td style={{ backgroundColor: stageColor }}>
                         {job.lastCompletedStage}
                       </td>
@@ -1778,15 +1896,24 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
             <tr>
               <th>Logo</th>
               <th>Employer</th>
+              <th>Applications</th>
+              <th>Website</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredCompanies.map((company, index) => (
               <tr key={index}>
                 <td>
-                  {fetchCompanyFavicon(company) && (
+                  {fetchFavicon({
+                    name: company.name,
+                    companyWebsite: company.companyWebsite,
+                  }) && (
                     <img
-                      src={fetchCompanyFavicon(company)}
+                      src={fetchFavicon({
+                        name: company.name,
+                        companyWebsite: company.companyWebsite,
+                      })}
                       alt="favicon"
                       style={{ width: 24, height: 24 }}
                     />
@@ -1794,7 +1921,27 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                 </td>
                 <td>{company.name}</td>
                 <td>
-                  {/* For companies, maybe a "More Info" or "View Applications" link */}
+                  {
+                    jobApplications.filter(
+                      (app) => app.employer === company.name
+                    ).length
+                  }
+                </td>
+                <td>
+                  {company.companyWebsite ? (
+                    <a
+                      href={company.companyWebsite}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ textDecoration: "none", color: "#007bff" }}
+                    >
+                      {company.companyWebsite}
+                    </a>
+                  ) : (
+                    "N/A"
+                  )}
+                </td>
+                <td>
                   <Button
                     variant="link"
                     onClick={() => filterByCompany(company.name)}
@@ -1806,7 +1953,15 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
               </tr>
             ))}
           </tbody>
-          <tfoot></tfoot>
+          <tfoot>
+            <tr>
+              <td colSpan={5} className="text-center">
+                <Button onClick={() => setShowAddCompanyModal(true)}>
+                  Add New Company
+                </Button>
+              </td>
+            </tr>
+          </tfoot>
         </Table>
       );
     }
@@ -1820,9 +1975,10 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
             const isEditing = editingRow === job.id; // Compare IDs correctly
             const stageColor = statusColors[job.lastCompletedStage] || "#ddd"; // Color for stage
 
-            const faviconUrl = fetchCompanyFavicon(
-              getCompanyForJob(job, companies)
-            );
+            const faviconUrl = fetchFavicon({
+              name: job.employer, // pass employer as 'name'
+              companyWebsite: job.companyWebsite,
+            });
 
             // Calculate DA-LU only if dateAppNotif and lastUpdate are defined
             const daLuValue =
@@ -1834,7 +1990,9 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
               <Col
                 key={job.id}
                 ref={combineRefs(
-                  (el) => (cardRefs.current[index] = el), // Ref for scrolling
+                  (el) => {
+                    cardRefs.current[index] = el;
+                  }, // Ref for scrolling
                   editingRow === job.id
                     ? (editingRef as React.RefObject<HTMLTableRowElement>) // Existing ref
                     : undefined
@@ -1962,6 +2120,10 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                           </Button>
                         </Form.Group>
                         <Form.Group className="mb-2">
+                          <Form.Label>Interview Date</Form.Label>
+                          {renderEditableCell("upcomingInterviewDate", "date")}
+                        </Form.Group>
+                        <Form.Group className="mb-2">
                           <Form.Label>Stage</Form.Label>
                           {renderEditableCell(
                             "lastCompletedStage",
@@ -1997,10 +2159,13 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                           {highlightMatch(job.jobLevel, searchQuery)}
                           <br />
                           <strong>Date Applied:</strong>{" "}
-                          {job.dateAppNotif || "N/A"}
+                          {formatDateUK(job.dateAppNotif)}
                           <br />
                           <strong>Last Update:</strong>{" "}
-                          {job.lastUpdate || "N/A"}
+                          {formatDateUK(job.lastUpdate)}
+                          <br />
+                          <strong>Interview Date:</strong>{" "}
+                          {formatDateUK(job.upcomingInterviewDate)}
                           <br />
                           <strong>Stage:</strong> {job.lastCompletedStage}
                           <br />
@@ -2090,7 +2255,10 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
               company.name.toLowerCase().includes(searchTerm.toLowerCase())
             )
             .map((company, index) => {
-              const faviconUrl = fetchCompanyFavicon(company);
+              const faviconUrl = fetchFavicon({
+                name: company.name,
+                companyWebsite: company.companyWebsite,
+              });
               const applicationsCount = jobApplications.filter(
                 (app) => app.employer === company.name
               ).length;
@@ -2317,8 +2485,10 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
             </Button>
             <StatisticsModal
               show={showStatisticsModal}
+              filteredApplications={filteredApplications} // Add filtered applications
+              useFilteredData={useFilteredData} // Add state for filtered data toggle
+              setUseFilteredData={setUseFilteredData} // Add setter for filtered data toggle
               onHide={() => setShowStatisticsModal(false)}
-              allJobApplications={allJobApplications} // Pass the unfiltered applications
             />
           </>
           <Button
@@ -2553,7 +2723,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
 
         <div>
           {showAddApplicationModal && (
-            <Modal show={true} onHide={onCloseAddApplicationModal} centered>
+            <Modal show={true} onHide={closeAddApplicationModal} centered>
               <Modal.Header closeButton>
                 <Modal.Title>Add New Job Application</Modal.Title>
               </Modal.Header>
@@ -2771,7 +2941,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       onChange={(opt) =>
                         setNewApplication((prev) => ({
                           ...prev,
-                          year: opt?.value,
+                          year: getDefaultValue.number(opt?.value),
                         }))
                       }
                     />
@@ -2786,7 +2956,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       onChange={(opt) =>
                         setNewApplication((prev) => ({
                           ...prev,
-                          generalRole: opt?.value,
+                          generalRole: getDefaultValue.string(opt?.value),
                         }))
                       }
                     />
@@ -2801,7 +2971,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       onChange={(opt) =>
                         setNewApplication((prev) => ({
                           ...prev,
-                          jobLevel: opt?.value,
+                          jobLevel: getDefaultValue.string(opt?.value),
                         }))
                       }
                     />
@@ -2820,7 +2990,9 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       onChange={(date) =>
                         setNewApplication((prev) => ({
                           ...prev,
-                          dateAppNotif: date?.toISOString().split("T")[0],
+                          dateAppNotif: getDefaultValue.date(
+                            date?.toISOString().split("T")[0]
+                          ),
                         }))
                       }
                       dateFormat="yyyy-MM-dd"
@@ -2841,7 +3013,9 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       onChange={(date) =>
                         setNewApplication((prev) => ({
                           ...prev,
-                          lastUpdate: date?.toISOString().split("T")[0],
+                          lastUpdate: getDefaultValue.date(
+                            date?.toISOString().split("T")[0]
+                          ),
                         }))
                       }
                       dateFormat="yyyy-MM-dd"
@@ -2862,9 +3036,9 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       onChange={(date) =>
                         setNewApplication((prev) => ({
                           ...prev,
-                          upcomingInterviewDate: date
-                            ?.toISOString()
-                            .split("T")[0],
+                          upcomingInterviewDate: getDefaultValue.date(
+                            date?.toISOString().split("T")[0]
+                          ),
                         }))
                       }
                       dateFormat="yyyy-MM-dd"
@@ -2882,7 +3056,8 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       onChange={(opt) =>
                         setNewApplication((prev) => ({
                           ...prev,
-                          lastCompletedStage: opt?.value || "",
+                          lastCompletedStage:
+                            getDefaultValue.string(opt?.value) || "",
                         }))
                       }
                     />
@@ -2941,21 +3116,55 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       }
                     />
                   </Form.Group>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Work Type</Form.Label>
+                    <Select
+                      options={[
+                        { value: "Remote", label: "Remote" },
+                        { value: "Hybrid", label: "Hybrid" },
+                        { value: "Office", label: "Office" },
+                      ]}
+                      value={{
+                        value: newApplication.workType || "",
+                        label: newApplication.workType || "",
+                      }}
+                      onChange={(opt) =>
+                        setNewApplication((prev) => ({
+                          ...prev,
+                          workType: opt?.value || "",
+                        }))
+                      }
+                    />
+                  </Form.Group>
+
+                  <Form.Group className="mb-3">
+                    <Form.Label>Contract Type</Form.Label>
+                    <Select
+                      options={[
+                        { value: "Full-time", label: "Full-time" },
+                        { value: "Part-time", label: "Part-time" },
+                        { value: "Contract", label: "Contract" },
+                        { value: "Internship", label: "Internship" },
+                      ]}
+                      value={{
+                        value: newApplication.contractType || "",
+                        label: newApplication.contractType || "",
+                      }}
+                      onChange={(opt) =>
+                        setNewApplication((prev) => ({
+                          ...prev,
+                          contractType: opt?.value || "",
+                        }))
+                      }
+                    />
+                  </Form.Group>
                 </Form>
               </Modal.Body>
               <Modal.Footer>
-                <Button
-                  variant="success"
-                  onClick={() =>
-                    handleSaveApplication(selectedApplication!, false)
-                  }
-                >
+                <Button variant="success" onClick={handleSaveNewApplication}>
                   Save
                 </Button>
-                <Button
-                  variant="secondary"
-                  onClick={onCloseAddApplicationModal}
-                >
+                <Button variant="secondary" onClick={closeAddApplicationModal}>
                   Cancel
                 </Button>
               </Modal.Footer>

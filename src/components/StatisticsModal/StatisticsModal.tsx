@@ -1,35 +1,38 @@
 import React, { useState, useMemo } from "react";
 import { Modal, Form, Button } from "react-bootstrap";
 import { PieChart } from "react-minimal-pie-chart";
-
-interface JobApplication {
-  id?: number;
-  employer: string;
-  jobTitle: string;
-  cityTown: string;
-  generalRole: string;
-  jobLevel: string;
-  lastCompletedStage: string;
-}
+import { useApplicationContext } from "../../context/ApplicationContext";
+import { JobApplication } from "../../types/jobApplication"; // Add this import
 
 interface StatisticsModalProps {
   show: boolean;
   onHide: () => void;
-  allJobApplications: JobApplication[];
+  filteredApplications: JobApplication[];
+  useFilteredData: boolean;
+  setUseFilteredData: (value: boolean) => void;
 }
 
-const StatisticsModal: React.FC<StatisticsModalProps> = ({
-  show,
+const StatisticsModal: React.FC<StatisticsModalProps> = ({ 
+  show, 
   onHide,
-  allJobApplications,
+  filteredApplications,
+  useFilteredData,
+  setUseFilteredData
 }) => {
-  // Only include fields that make sense for statistics
+  const { allApplications } = useApplicationContext();
+  
+  // Remove internal state for useFilteredData
+  const activeDataset = useFilteredData ? filteredApplications : allApplications;
+
   const meaningfulFields = [
     { value: "employer", label: "Employer" },
     { value: "generalRole", label: "General Role" },
     { value: "jobLevel", label: "Job Level" },
     { value: "lastCompletedStage", label: "Job Status" },
     { value: "cityTown", label: "City" },
+    { value: "sector", label: "Sector" },
+    { value: "workType", label: "Work Type" },
+    { value: "contractType", label: "Contract Type" },
   ];
 
   const [selectedStatistic, setSelectedStatistic] = useState(
@@ -41,8 +44,8 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({
     const colors: Record<string, string> = {};
     let index = 0;
 
-    allJobApplications.forEach((app) => {
-      const key = app[selectedStatistic as keyof JobApplication];
+    activeDataset.forEach((app) => {
+      const key = String(app[selectedStatistic as keyof JobApplication]);
       if (key && !colors[key]) {
         colors[key] = `hsl(${(index * 137.5) % 360}, 70%, 50%)`; // Golden angle for unique colors
         index++;
@@ -50,13 +53,13 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({
     });
 
     return colors;
-  }, [allJobApplications, selectedStatistic]);
+  }, [activeDataset, selectedStatistic]);
 
   const chartData = useMemo(() => {
     const counts: Record<string, number> = {};
 
-    allJobApplications.forEach((app) => {
-      const key = app[selectedStatistic as keyof JobApplication];
+    activeDataset.forEach((app) => {
+      const key = String(app[selectedStatistic as keyof JobApplication]);
       if (key) {
         counts[key] = (counts[key] || 0) + 1;
       }
@@ -67,7 +70,7 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({
       value,
       color: colorCache[label],
     }));
-  }, [allJobApplications, selectedStatistic, colorCache]);
+  }, [activeDataset, selectedStatistic, colorCache]);
 
   const [hoveredSegment, setHoveredSegment] = useState<string | null>(null);
 
@@ -77,6 +80,16 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({
         <Modal.Title>Statistics</Modal.Title>
       </Modal.Header>
       <Modal.Body>
+        <Form.Group className="mb-3">
+          <Form.Check
+            type="switch"
+            id="data-source-switch"
+            label={`Using ${useFilteredData ? 'filtered' : 'all'} applications`}
+            checked={useFilteredData}
+            onChange={(e) => setUseFilteredData(e.target.checked)}
+          />
+        </Form.Group>
+        
         <Form.Group>
           <Form.Label>Choose Statistic</Form.Label>
           <Form.Select
@@ -91,25 +104,38 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({
           </Form.Select>
         </Form.Group>
         <div className="text-center mt-4">
-          <h5>Total Applications: {allJobApplications.length}</h5>
+          <h5>
+            Total Applications: {activeDataset.length}
+            {useFilteredData && allApplications.length !== activeDataset.length && (
+              <small className="text-muted ms-2">
+                (of {allApplications.length} total)
+              </small>
+            )}
+          </h5>
           <div style={{ position: "relative" }}>
             <PieChart
               data={chartData}
-              label={({ dataEntry }) =>
-                `${dataEntry.title} (${dataEntry.value})`
-              }
-              labelStyle={{
-                fontSize: "5px",
-                fill: "#fff",
-                pointerEvents: "none",
+              label={({ dataEntry }) => {
+                const percentage = Math.round(
+                  (dataEntry.value / allApplications.length) * 100
+                );
+                return `${dataEntry.title}: ${dataEntry.value} (${percentage}%)`;
               }}
-              radius={42}
+              labelStyle={{
+                fontSize: "4px",
+                fontFamily: "sans-serif",
+                fill: "#000",
+              }}
+              radius={40}
               labelPosition={112}
+              paddingAngle={2}
+              animate
+              segmentsStyle={{ transition: "stroke .3s", cursor: "pointer" }}
               onMouseOver={(_, dataIndex) =>
                 setHoveredSegment(chartData[dataIndex]?.title || null)
               }
               onMouseOut={() => setHoveredSegment(null)}
-              style={{ height: "200px" }}
+              style={{ height: "300px" }}
             />
             {hoveredSegment && (
               <div

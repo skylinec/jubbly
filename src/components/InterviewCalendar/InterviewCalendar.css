@@ -1,0 +1,99 @@
+.interview-calendar.dark {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+.interview-calendar.dark .rbc-calendar {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+.interview-calendar.dark .rbc-header {
+  background-color: #333;
+  color: #ffffff;
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-toolbar button {
+  color: #ffffff;
+  background-color: #333;
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-toolbar button:hover {
+  background-color: #444;
+}
+
+.interview-calendar.dark .rbc-toolbar button.rbc-active {
+  background-color: #007bff;
+}
+
+.interview-calendar.dark .rbc-month-view,
+.interview-calendar.dark .rbc-time-view,
+.interview-calendar.dark .rbc-agenda-view {
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-off-range-bg {
+  background-color: #2a2a2a;
+}
+
+.interview-calendar.dark .rbc-today {
+  background-color: rgba(0, 123, 255, 0.1);
+}
+
+.interview-calendar.dark .rbc-event {
+  background-color: #007bff;
+  border-color: #0056b3;
+}
+
+.interview-calendar.dark .rbc-event:hover {
+  background-color: #0056b3;
+}
+
+.interview-calendar.dark .rbc-time-slot {
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-day-bg + .rbc-day-bg,
+.interview-calendar.dark .rbc-month-row + .rbc-month-row {
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-date-cell {
+  color: #ffffff;
+}
+
+.interview-calendar.dark .rbc-time-content {
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-time-header {
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-current-time-indicator {
+  background-color: #007bff;
+}
+
+.interview-calendar.dark .rbc-day-slot .rbc-time-slot {
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-agenda-view table.rbc-agenda-table {
+  border-color: #444;
+  color: #ffffff;
+}
+
+.interview-calendar.dark .rbc-agenda-view table.rbc-agenda-table thead > tr > th {
+  background-color: #333;
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-agenda-view table.rbc-agenda-table tbody > tr {
+  border-color: #444;
+}
+
+.interview-calendar.dark .rbc-agenda-view table.rbc-agenda-table tbody > tr:hover {
+  background-color: #2a2a2a;
+}

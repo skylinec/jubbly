@@ -2,8 +2,8 @@ import React from "react";
 import Navbar from "react-bootstrap/Navbar";
 import Container from "react-bootstrap/Container";
 import Button from "react-bootstrap/Button";
-
-import { useModalContext } from "../../context/ModalContext";
+import { useApplicationContext } from "../../context/ApplicationContext";
+import { Link, useLocation } from "react-router-dom";
 
 interface PageHeaderProps {
   darkMode: boolean;
@@ -14,7 +14,8 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   darkMode,
   onToggleDarkMode,
 }) => {
-  const { openAddApplicationModal } = useModalContext();
+  const { handleAddApplication } = useApplicationContext();
+  const location = useLocation();
 
   return (
     <Navbar
@@ -22,13 +23,20 @@ const PageHeader: React.FC<PageHeaderProps> = ({
       variant={darkMode ? "dark" : "light"}
     >
       <Container>
-        <Navbar.Brand href="#home">Jubbly</Navbar.Brand>
-        <Button variant="light" onClick={openAddApplicationModal}>
-          Add New Application
-        </Button>
-        <Button variant="outline-light" onClick={onToggleDarkMode}>
-          {darkMode ? "Light Mode" : "Dark Mode"}
-        </Button>
+        <Navbar.Brand as={Link} to="/">Jubbly</Navbar.Brand>
+        <div className="d-flex gap-2">
+          <Link to={location.pathname === "/calendar" ? "/" : "/calendar"}>
+            <Button variant="light">
+              {location.pathname === "/calendar" ? "View Applications" : "View Calendar"}
+            </Button>
+          </Link>
+          <Button variant="light" onClick={handleAddApplication}>
+            Add New Application
+          </Button>
+          <Button variant="outline-light" onClick={onToggleDarkMode}>
+            {darkMode ? "Light Mode" : "Dark Mode"}
+          </Button>
+        </div>
       </Container>
     </Navbar>
   );
