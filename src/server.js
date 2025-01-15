@@ -4,6 +4,8 @@ const cors = require("cors");
 const helmet = require("helmet");
 const dotenv = require("dotenv");
 const { spawn } = require("child_process");
+const http = require('http');
+const WebSocket = require('ws');
 
 dotenv.config();
 
@@ -60,6 +62,7 @@ const db = new sqlite3.Database("./job_applications.db", (err) => {
         da_lu INTEGER DEFAULT 0,
         lu_now INTEGER DEFAULT 0,
         upcoming_interview_date TEXT,
+        upcoming_interview_time TEXT,
         last_completed_stage TEXT DEFAULT 'Applied',
         notes TEXT,
         external TEXT DEFAULT 'No',
@@ -76,6 +79,21 @@ const db = new sqlite3.Database("./job_applications.db", (err) => {
         }
       }
     );
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS filter_configs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        config TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `, (err) => {
+      if (err) {
+        console.error("Error creating filter_configs table:", err.message);
+      } else {
+        console.log("Filter configs table ensured.");
+      }
+    });
   }
 });
 
@@ -111,6 +129,7 @@ app.post("/applications", camelToSnakeMiddleware, (req, res) => {
     da_lu,
     lu_now,
     upcoming_interview_date,
+    upcoming_interview_time,
     last_completed_stage,
     notes,
     external,
@@ -123,9 +142,9 @@ app.post("/applications", camelToSnakeMiddleware, (req, res) => {
   const query = `
     INSERT INTO job_applications (
       employer, job_title, city_town, year, general_role, job_level, date_app_notif,
-      last_update, da_now, da_lu, lu_now, upcoming_interview_date, last_completed_stage,
-      notes, external, job_description, company_website, role_link, sector
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      last_update, da_now, da_lu, lu_now, upcoming_interview_date, upcoming_interview_time,
+      last_completed_stage, notes, external, job_description, company_website, role_link, sector
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
   db.run(
     query,
@@ -142,6 +161,7 @@ app.post("/applications", camelToSnakeMiddleware, (req, res) => {
       da_lu || null,
       lu_now || null,
       upcoming_interview_date || null,
+      upcoming_interview_time || null,
       last_completed_stage || null,
       notes || null,
       external || null,
@@ -178,6 +198,7 @@ app.put("/applications/:id", camelToSnakeMiddleware, (req, res) => {
     da_lu,
     lu_now,
     upcoming_interview_date,
+    upcoming_interview_time,
     last_completed_stage,
     notes,
     external,
@@ -193,7 +214,8 @@ app.put("/applications/:id", camelToSnakeMiddleware, (req, res) => {
     UPDATE job_applications
     SET employer = ?, job_title = ?, city_town = ?, year = ?, general_role = ?, job_level = ?, 
         date_app_notif = ?, last_update = ?, da_now = ?, da_lu = ?, lu_now = ?, 
-        upcoming_interview_date = ?, last_completed_stage = ?, notes = ?, external = ?,
+        upcoming_interview_date = ?, upcoming_interview_time = ?, 
+        last_completed_stage = ?, notes = ?, external = ?,
         job_description = ?, company_website = ?, role_link = ?, sector = ?
     WHERE id = ?`;
 
@@ -212,6 +234,7 @@ app.put("/applications/:id", camelToSnakeMiddleware, (req, res) => {
       da_lu || null,
       lu_now || null,
       upcoming_interview_date || null,
+      upcoming_interview_time || null,
       last_completed_stage || null,
       notes || null,
       external || null,
@@ -245,128 +268,98 @@ app.delete("/applications/:id", (req, res) => {
   });
 });
 
-app.post("/nlp-extract", (req, res) => {
-  console.log("nlp req body",req.body)
-  const { text, role_link } = req.body;
+// Add health check endpoint
+app.get('/health', (req, res) => {
+  try {
+    db.get('SELECT 1', (err) => {
+      if (err) {
+        res.status(500).json({ status: 'error', message: 'Database connection failed' });
+        return;
+      }
+      res.json({ status: 'healthy' });
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
 
-  let new_text = text
-  .replace(/\n/g, " ")         // Replace all line breaks with a space
-  .replace(/\s+/g, " ")        // Replace multiple spaces with a single space
-  .trim();
-
-  console.log("NLP request received:", { new_text, role_link });
-
-  if (!text || !role_link) {
-    return res
-      .status(400)
-      .json({ error: "Both text and role_link are required for NLP extraction." });
+// Save filter configuration
+app.post("/filter-configs", (req, res) => {
+  const { name, config } = req.body;
+  if (!name || !config) {
+    return res.status(400).json({ error: "Name and config are required." });
   }
 
-  const pythonProcess = spawn("python3", ["src/py/nlp_parser.py", new_text, role_link]);
-
-  let result = "";
-  let errorOccurred = false;
-
-  pythonProcess.stdout.on("data", (data) => {
-    console.log("incoming:",data.toString())
-    result += data.toString();
-  });
-
-  pythonProcess.stderr.on("data", (data) => {
-    console.error("Python error:", data.toString());
-    if (!errorOccurred) {
-      errorOccurred = true;
-      res.status(500).json({ error: "NLP extraction failed or waiting", details: data.toString() });
+  const query = `INSERT INTO filter_configs (name, config) VALUES (?, ?)`;
+  db.run(query, [name, JSON.stringify(config)], function(err) {
+    if (err) {
+      console.error("Error saving filter config:", err);
+      return res.status(500).json({ error: "Failed to save filter configuration." });
     }
-  });
-
-  pythonProcess.on("close", (code) => {
-    if (!errorOccurred) {
-      try {
-        console.log("json to parse",result)
-        const parsedData = JSON.parse(result);
-        console.log('parsedData',parsedData)
-
-        // Ensure `role_link` is included in the data being saved
-        const {
-          employer,
-          job_title,
-          city_town,
-          year,
-          general_role,
-          job_level,
-          dates,
-          last_completed_stage,
-          notes,
-          company_website,
-          sector,
-        } = parsedData;
-
-        console.log("Parsed data to save:", { ...parsedData, role_link });
-
-        // Extract specific dates for application and upcoming interview
-        const date_app_notif = dates && dates[0] ? dates[0] : null;
-        const upcoming_interview_date = dates && dates[1] ? dates[1] : null;
-
-        const query = `
-          INSERT INTO job_applications (
-            employer, job_title, city_town, year, general_role, job_level, date_app_notif,
-            last_update, da_now, da_lu, lu_now, upcoming_interview_date, last_completed_stage,
-            notes, external, job_description, company_website, role_link, sector
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_DATE, 0, 0, 0, ?, ?, ?, 'No', NULL, ?, ?, ?)
-        `;
-
-        db.run(
-          query,
-          [
-            employer || null,
-            job_title || null,
-            city_town || null,
-            year || null,
-            general_role || null,
-            job_level || null,
-            date_app_notif || null,
-            upcoming_interview_date || null,
-            last_completed_stage || null,
-            notes || null,
-            company_website || null,
-            role_link || null,
-            sector || null,
-          ],
-          function (err) {
-            if (err) {
-              console.error("Error inserting into database:", err.message);
-              return res
-                .status(500)
-                .json({ error: "Failed to save application to database." });
-            }
-
-            res
-              .status(201)
-              .json({ id: this.lastID, message: "Application saved successfully." });
-          }
-        );
-      } catch (err) {
-        console.error("JSON parse error:", err.message);
-        res.status(500).json({ error: "Failed to parse NLP output." });
-      }
-    }
+    res.status(201).json({ 
+      id: this.lastID, 
+      message: "Filter configuration saved successfully." 
+    });
   });
 });
 
+app.get("/filter-configs", (req, res) => {
+  db.all("SELECT * FROM filter_configs ORDER BY created_at DESC", [], (err, rows) => {
+    if (err) {
+      console.error("Error fetching filter configs:", err);
+      return res.status(500).json({ error: "Failed to retrieve filter configurations." });
+    }
+    // Parse the config field before sending
+    const parsedRows = rows.map(row => ({
+      ...row,
+      config: JSON.parse(row.config)
+    }));
+    res.json(parsedRows);
+  });
+});
+
+app.delete("/filter-configs/:id", (req, res) => {
+  const { id } = req.params;
+  db.run("DELETE FROM filter_configs WHERE id = ?", [id], (err) => {
+    if (err) {
+      console.error("Error deleting filter config:", err);
+      return res.status(500).json({ error: "Failed to delete filter configuration." });
+    }
+    res.json({ message: "Filter configuration deleted successfully." });
+  });
+});
+
+// WebSocket setup
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+wss.on('connection', (ws) => {
+  console.log('New WebSocket connection');
+
+  ws.on('message', (message) => {
+    console.log('Received:', message);
+  });
+
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+  });
+});
 
 // Graceful shutdown
 process.on("SIGINT", () => {
-  db.close((err) => {
-    if (err) {
-      console.error("Error closing database:", err.message);
-    }
-    console.log("Closed SQLite database connection.");
-    process.exit(0);
+  wss.close(() => {
+    console.log('WebSocket server closed');
+    db.close((err) => {
+      if (err) {
+        console.error("Error closing database:", err.message);
+      }
+      console.log("Closed SQLite database connection.");
+      process.exit(0);
+    });
   });
 });
 
 // Start Server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });

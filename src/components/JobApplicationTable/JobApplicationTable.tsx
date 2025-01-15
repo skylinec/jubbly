@@ -32,6 +32,7 @@ import { useModalContext } from "../../context/ModalContext";
 import { useApplicationContext } from "../../context/ApplicationContext";
 
 import StatisticsModal from "../StatisticsModal/StatisticsModal"; // Adjust the path as needed
+import FilterConfigModal from "../FilterConfigModal/FilterConfigModal"; // Add to the imports at the top
 
 import { JobApplication } from "../../types/jobApplication";
 import { Company } from "../../types/company";
@@ -66,8 +67,12 @@ const jobStatuses = [
   "Interview 1",
   "Interview 2",
   "Interview 3",
+  "Offer",
+  "Offer Accepted",
+  "Offer Declined",
   "Ghosted",
   "Rejected",
+  "Dropped Out",
 ];
 
 const statusColors: { [key: string]: string } = {
@@ -85,9 +90,15 @@ const statusColors: { [key: string]: string } = {
   "Interview 2": "#a5d6a7",
   "Interview 3": "#80cbc4",
 
+  // Offer Stage - Greens
+  "Offer": "#81c784",
+  "Offer Accepted": "#66bb6a",
+  "Offer Declined": "#ef9a9a",
+
   // Negative Outcomes - Soft Reds
-  Ghosted: "#ffab91",
-  Rejected: "#ef9a9a",
+  "Ghosted": "#ff8a65",
+  "Rejected": "#e57373",
+  "Dropped Out": "#ffab91",
 
   // Other
   "Other (Custom)": "#b0bec5",
@@ -164,26 +175,30 @@ function normalizeURL(urlString: string): string {
  * with 'name' and optionally 'companyWebsite'.
  */
 export function fetchFavicon<T extends HasWebsiteAndName>(obj: T): string {
-  // 1. Try using companyWebsite if present
-  if (obj.companyWebsite) {
-    const domainString = normalizeURL(obj.companyWebsite);
-    try {
-      const url = new URL(domainString);
-      return `https://www.google.com/s2/favicons?sz=64&domain=${url.hostname}`;
-    } catch (e) {
-      console.error("Invalid URL:", domainString, e);
-      // Fall through to fallback
+  try {
+    // 1. Try using companyWebsite if present
+    if (obj.companyWebsite) {
+      const domainString = normalizeURL(obj.companyWebsite);
+      try {
+        const url = new URL(domainString);
+        return `https://www.google.com/s2/favicons?sz=64&domain=${url.hostname}`;
+      } catch (e) {
+        console.error("Invalid URL:", domainString, e);
+      }
     }
+
+    // 2. Try with company name
+    const normalizedName = obj.name.replace(/\s+/g, "").toLowerCase();
+
+    // 3. Return a default favicon if everything fails
+    return (
+      `https://www.google.com/s2/favicons?sz=64&domain=${normalizedName}.com` ||
+      "/default-favicon.png"
+    ); // Add a default favicon in your public folder
+  } catch (error) {
+    console.error("Error fetching favicon:", error);
+    return "/default-favicon.png"; // Fallback to default
   }
-
-  // 2. Fallback to something like 'obj.name'.com
-  const normalizedName = obj.name.replace(/\s+/g, "").toLowerCase();
-  const fallback = `https://www.google.com/s2/favicons?sz=64&domain=${normalizedName}.com`;
-
-  // 3. Optional final fallback to a local default icon:
-  // return fallback || "/path/to/default-icon.png";
-
-  return fallback;
 }
 
 const getDefaultValue = {
@@ -204,17 +219,36 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     allApplications,
     loading,
     refreshApplications,
+    saveFilterConfig,
+    loadFilterConfigs,
+    filterConfigs,
+    selectedConfig,
+    setSelectedConfig,
+    handleSaveFilterConfig,
+    selectedFilters,
+    dateRange,
+    hideNegativeOutcomes,
+    setHideNegativeOutcomes,
+    selectedStages,
+    setSelectedFilters,
+    setDateRange,
+    setSelectedStages,
+    searchQuery,
+    setSearchQuery,
+    deleteFilterConfig,
   } = useApplicationContext();
 
   const location = useLocation();
   const navigate = useNavigate();
+
+  const [showFilterModal, setShowFilterModal] = useState<boolean>(false);
 
   const tableRef = useRef<HTMLTableElement | null>(null); // Ref for the table element
   const [jobApplications, setJobApplications] = useState<JobApplication[]>([]);
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<Partial<JobApplication>>({});
-  const [searchTerm, setSearchTerm] = useState("");
+  // const [searchTerm, setSearchTerm] = useState("");
   // const [filter, setFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{
     key: keyof JobApplication | null;
@@ -233,7 +267,6 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
 
   const [showModal, setShowModal] = useState(false);
   const [selectedNotes, setSelectedNotes] = useState<string | null>(null);
-  const [selectedStages, setSelectedStages] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [suggestions, setSuggestions] = useState<
     { value: string; label: string; type: string }[]
@@ -271,16 +304,6 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     label: string;
     type: string;
   }
-
-  const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
-
-  const [hideGhostedRejected, setHideGhostedRejected] = useState(false);
-
-  const [dateRange, setDateRange] = useState<
-    [Date | undefined, Date | undefined]
-  >([undefined, undefined]);
-
-  const [searchQuery, setSearchQuery] = useState<string>("");
 
   const searchSelectRef = useRef<any>(null); // React-select uses 'any' for its ref
   const searchRef = useRef<any>(null); // React-select uses 'any' for its ref
@@ -372,7 +395,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
             break;
           case "g":
             event.preventDefault();
-            setHideGhostedRejected((prev) => !prev);
+            setHideNegativeOutcomes((prev) => !prev);
             break;
           case "t":
             // event.preventDefault();
@@ -410,7 +433,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     searchRef,
     searchSelectRef,
     setCurrentDataType,
-    setHideGhostedRejected,
+    setHideNegativeOutcomes,
     setViewMode,
     setShowShortcutsModal,
   ]);
@@ -502,8 +525,8 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
       endDateParam ? new Date(endDateParam) : undefined,
     ]);
 
-    const hideGhostedRejectedFromURL = params.get("hideGhostedRejected");
-    setHideGhostedRejected(hideGhostedRejectedFromURL === "true");
+    const hideNegativeOutcomesFromURL = params.get("hideNegativeOutcomes");
+    setHideNegativeOutcomes(hideNegativeOutcomesFromURL === "true");
   }, [location.search]);
 
   useEffect(() => {
@@ -518,7 +541,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
 
     params.set("viewMode", viewMode);
     params.set("dataType", currentDataType);
-    params.set("hideGhostedRejected", hideGhostedRejected.toString());
+    params.set("hideNegativeOutcomes", hideNegativeOutcomes.toString());
 
     if (dateRange[0]) {
       params.set("startDate", dateRange[0].toISOString().split("T")[0]);
@@ -537,7 +560,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     selectedFilters,
     viewMode,
     currentDataType,
-    hideGhostedRejected,
+    hideNegativeOutcomes,
     dateRange,
     navigate,
   ]);
@@ -572,6 +595,31 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
       window.removeEventListener("resize", updateButtonPosition);
     };
   }, [editingRow, editingRef, tableRef]);
+
+  const handleLoadFilterConfig = (config: any) => {
+    const {
+      filters,
+      dateRange,
+      hideNegativeOutcomes,
+      selectedStages,
+      searchQuery,
+    } = config;
+
+    setSelectedFilters(filters);
+    setDateRange(
+      dateRange
+        ? [
+            dateRange[0] ? new Date(dateRange[0]) : undefined,
+            dateRange[1] ? new Date(dateRange[1]) : undefined,
+          ]
+        : [undefined, undefined]
+    );
+    setHideNegativeOutcomes(hideNegativeOutcomes);
+    setSelectedStages(selectedStages);
+    setSearchQuery(searchQuery || "");
+
+    toast.success("Filter configuration loaded successfully");
+  };
 
   const handleFilterChange = (filters: FilterOption[]) => {
     const groupedFilters = filters.reduce<Record<string, string[]>>(
@@ -669,9 +717,9 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     try {
       const updatedApplication = {
         ...application,
-        upcomingInterviewDate: ensureValidDateTime(
-          application.upcomingInterviewDate
-        ),
+        upcomingInterviewTime:
+          application.upcomingInterviewTime ||
+          (application.upcomingInterviewDate ? "09:00" : null),
       };
 
       const response = isNew
@@ -681,40 +729,23 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
             updatedApplication
           );
 
-      const savedApplication: JobApplication = {
+      const savedApplication = {
+        ...updatedApplication,
         id: isNew ? response.data.id : updatedApplication.id!,
-        employer: updatedApplication.employer || "",
-        jobTitle: updatedApplication.jobTitle || "",
-        cityTown: updatedApplication.cityTown || "",
-        year: updatedApplication.year || new Date().getFullYear(),
-        generalRole: updatedApplication.generalRole || "",
-        jobLevel: updatedApplication.jobLevel || "",
-        dateAppNotif: updatedApplication.dateAppNotif || "",
-        lastUpdate: updatedApplication.lastUpdate || "",
-        daNow: updatedApplication.daNow || 0,
-        daLu: updatedApplication.daLu || 0,
-        luNow: updatedApplication.luNow || 0,
-        upcomingInterviewDate:
-          updatedApplication.upcomingInterviewDate || undefined,
-        lastCompletedStage: updatedApplication.lastCompletedStage || "",
-        notes: updatedApplication.notes || "",
-        external: updatedApplication.external || "No",
-        jobDescription: updatedApplication.jobDescription || "",
-        companyWebsite: updatedApplication.companyWebsite || "",
-        roleLink: updatedApplication.roleLink || "",
-        sector: updatedApplication.sector || "",
       };
 
       // Update the job applications state
       setJobApplications((prev) =>
         isNew
-          ? [...prev, savedApplication]
+          ? [...prev, savedApplication as JobApplication]
           : prev.map((app) =>
-              app.id === savedApplication.id ? savedApplication : app
+              app.id === savedApplication.id
+                ? (savedApplication as JobApplication)
+                : app
             )
       );
 
-      await refreshApplications(); // Refresh applications after saving
+      await refreshApplications();
       setEditingRow(null);
       toast.success(`Application ${isNew ? "added" : "updated"} successfully!`);
     } catch (error) {
@@ -804,9 +835,11 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
           value.toLowerCase().includes(searchQuery.toLowerCase())
         );
 
-    // Replace `selectedFilters` processing with groupedFilters
-    const matchesGroupedFilters = Object.entries(groupedFilters).every(
-      ([type, values]) => {
+    // Add safety check for empty filters
+    const matchesGroupedFilters = Object.keys(groupedFilters).length === 0 || 
+      Object.entries(groupedFilters).every(([type, values]) => {
+        if (!values) return true; // Skip if values is undefined
+        
         // Return true if at least one value matches
         switch (type) {
           case "Employer":
@@ -838,17 +871,17 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
           default:
             return true; // If unrecognized type, skip filter
         }
-      }
-    );
+    });
 
     const matchesStages =
       selectedStages.length === 0 ||
       selectedStages.includes(application.lastCompletedStage);
 
-    const matchesHideGhostedRejected =
-      !hideGhostedRejected || // If the toggle is off, include all applications
-      (application.lastCompletedStage !== "Ghosted" &&
-        application.lastCompletedStage !== "Rejected");
+    const matchesNegativeOutcomes =
+      !hideNegativeOutcomes ||
+      !["Ghosted", "Rejected", "Dropped Out", "Offer Declined"].includes(
+        application.lastCompletedStage
+      );
 
     // Date range filter for dateAppNotif only
     const matchesDateRange = (() => {
@@ -875,7 +908,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
       matchesSearchQuery &&
       matchesGroupedFilters &&
       matchesStages &&
-      matchesHideGhostedRejected &&
+      matchesNegativeOutcomes &&
       matchesDateRange
     );
   };
@@ -1099,7 +1132,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
 
   const renderEditableCell = (
     field: keyof JobApplication,
-    type: "text" | "number" | "date" | "select",
+    type: "text" | "number" | "date" | "time" | "select",
     id?: number,
     options?: { value: any; label: string }[]
   ) => {
@@ -1223,23 +1256,54 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
     if (type === "date") {
       const parsedDate = currentValue ? new Date(currentValue as string) : null;
 
+      if (field === "upcomingInterviewDate") {
+        return (
+          <div className="d-flex gap-2">
+            <DatePicker
+              className="form-control"
+              popperClassName="border-0 shadow-lg"
+              selected={parsedDate}
+              onChange={(date) => {
+                handleEditChange(
+                  field,
+                  date?.toISOString().split("T")[0] || ""
+                );
+                // If there's no time set yet, set default time
+                if (date && !editValues.upcomingInterviewTime) {
+                  handleEditChange("upcomingInterviewTime", "09:00");
+                }
+              }}
+              dateFormat="yyyy-MM-dd"
+              isClearable
+            />
+            {parsedDate && (
+              <Form.Control
+                type="time"
+                value={editValues.upcomingInterviewTime || "09:00"}
+                onChange={(e) => {
+                  handleEditChange("upcomingInterviewTime", e.target.value);
+                  setEditValues((prev) => ({
+                    ...prev,
+                    upcomingInterviewTime: e.target.value,
+                  }));
+                }}
+              />
+            )}
+          </div>
+        );
+      }
+
       return (
-        <div style={{ width: "100%" }}>
-          <DatePicker
-            className="form-control"
-            popperClassName="border-0 shadow-lg"
-            selected={
-              parsedDate instanceof Date && !isNaN(parsedDate.getTime())
-                ? parsedDate
-                : null
-            }
-            onChange={(date) =>
-              handleEditChange(field, date?.toISOString().split("T")[0] || "")
-            }
-            dateFormat="yyyy-MM-dd"
-            isClearable
-          />
-        </div>
+        <DatePicker
+          className="form-control"
+          popperClassName="border-0 shadow-lg"
+          selected={parsedDate}
+          onChange={(date) =>
+            handleEditChange(field, date?.toISOString().split("T")[0] || "")
+          }
+          dateFormat="yyyy-MM-dd"
+          isClearable
+        />
       );
     }
 
@@ -1474,7 +1538,7 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
   }, [
     selectedFilters,
     dateRange,
-    hideGhostedRejected,
+    hideNegativeOutcomes,
     selectedStages,
     searchQuery,
   ]);
@@ -1511,6 +1575,8 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
         .filter((stage) => stage?.trim()) // Exclude empty or undefined values
     )
   ).map((stage) => ({ value: stage, label: stage }));
+
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
   const filteredCompanies = companies.filter((company) =>
     company.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -1841,7 +1907,13 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
                       <td>
                         {calculateDaysBetween(job.dateAppNotif, job.lastUpdate)}
                       </td>
-                      <td>{formatDateUK(job.upcomingInterviewDate)}</td>
+                      <td>
+                        {job.upcomingInterviewDate
+                          ? `${formatDateUK(job.upcomingInterviewDate)} ${
+                              job.upcomingInterviewTime || "09:00"
+                            }`
+                          : "N/A"}
+                      </td>
                       <td style={{ backgroundColor: stageColor }}>
                         {job.lastCompletedStage}
                       </td>
@@ -2492,13 +2564,13 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
             />
           </>
           <Button
-            variant={hideGhostedRejected ? "secondary" : "primary"}
-            onClick={() => setHideGhostedRejected((prev) => !prev)}
+            variant={hideNegativeOutcomes ? "secondary" : "primary"}
+            onClick={() => setHideNegativeOutcomes((prev) => !prev)}
             className="me-2"
           >
-            {hideGhostedRejected
+            {hideNegativeOutcomes
               ? "Show All Applications"
-              : "Hide Ghosted & Rejected"}
+              : "Hide Negative Outcomes"}
           </Button>
 
           <Button
@@ -2532,9 +2604,16 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
           >
             Cards View
           </Button>
+          <Button
+            variant="primary"
+            onClick={() => setShowFilterModal(true)}
+            className="me-2"
+          >
+            Manage Filter Presets
+          </Button>
         </div>
 
-        {viewMode === "cards" ? (
+        {viewMode === "cards" && (
           <div className="d-flex justify-content-between align-items-center mb-3">
             <Form.Select
               onChange={(e) => {
@@ -2560,16 +2639,10 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
               <option value="dateAppNotif:desc">
                 Date Applied (Newest First)
               </option>
-              <option value="lastUpdate:asc">
-                Last Updated (Oldest First)
-              </option>
-              <option value="lastUpdate:desc">
-                Last Updated (Newest First)
-              </option>
+              <option value="lastUpdate:asc">Last Updated (Oldest First)</option>
+              <option value="lastUpdate:desc">Last Updated (Newest First)</option>
             </Form.Select>
           </div>
-        ) : (
-          <div></div>
         )}
 
         {/* View Content */}
@@ -2585,107 +2658,185 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
             </Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            {modalEditMode ? (
-              // EDIT MODE
-              <>
-                <Form.Group className="mb-3">
-                  <Form.Label>Job Description</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={4}
-                    value={selectedApplication?.jobDescription || ""}
-                    onChange={(e) =>
-                      setSelectedApplication((prev) =>
-                        prev
-                          ? { ...prev, jobDescription: e.target.value }
-                          : prev
-                      )
-                    }
-                  />
-                </Form.Group>
-                <Form.Group className="mb-3">
-                  <Form.Label>Company Website</Form.Label>
-                  <Form.Control
-                    type="text"
-                    value={selectedApplication?.companyWebsite || ""}
-                    onChange={(e) =>
-                      setSelectedApplication((prev) =>
-                        prev
-                          ? { ...prev, companyWebsite: e.target.value }
-                          : prev
-                      )
-                    }
-                  />
-                </Form.Group>
-                <Form.Group className="mb-3">
-                  <Form.Label>Role Link</Form.Label>
-                  <Form.Control
-                    type="text"
-                    value={selectedApplication?.roleLink || ""}
-                    onChange={(e) =>
-                      setSelectedApplication((prev) =>
-                        prev ? { ...prev, roleLink: e.target.value } : prev
-                      )
-                    }
-                  />
-                </Form.Group>
-                <Form.Group className="mb-3">
-                  <Form.Label>Notes</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={4}
-                    value={selectedApplication?.notes || ""}
-                    onChange={(e) =>
-                      setSelectedApplication((prev) =>
-                        prev ? { ...prev, notes: e.target.value } : prev
-                      )
-                    }
-                  />
-                </Form.Group>
-              </>
-            ) : (
-              // VIEW MODE (Non-editable)
-              <div>
-                <p>
-                  <strong>Job Description:</strong>
-                  <br />
-                  {selectedApplication?.jobDescription || "N/A"}
-                </p>
-                <p>
-                  <strong>Company Website:</strong>
-                  <br />
-                  {selectedApplication?.companyWebsite ? (
-                    <a
-                      href={selectedApplication.companyWebsite}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {selectedApplication.companyWebsite}
-                    </a>
-                  ) : (
-                    "N/A"
-                  )}
-                </p>
-                <p>
-                  <strong>Role Link:</strong>
-                  <br />
-                  {selectedApplication?.roleLink ? (
-                    <a
-                      href={selectedApplication.roleLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {selectedApplication.roleLink}
-                    </a>
-                  ) : (
-                    "N/A"
-                  )}
-                </p>
-                <p>
-                  <strong>Notes:</strong>
-                  <br />
-                  {selectedApplication?.notes || "No notes available."}
-                </p>
+            {selectedApplication && (
+              <div className="interview-details">
+                {modalEditMode ? (
+                  // EDIT MODE
+                  <>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Job Description</Form.Label>
+                      <Form.Control
+                        as="textarea"
+                        rows={4}
+                        value={selectedApplication?.jobDescription || ""}
+                        onChange={(e) =>
+                          setSelectedApplication((prev) =>
+                            prev
+                              ? { ...prev, jobDescription: e.target.value }
+                              : prev
+                          )
+                        }
+                      />
+                    </Form.Group>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Company Website</Form.Label>
+                      <Form.Control
+                        type="text"
+                        value={selectedApplication?.companyWebsite || ""}
+                        onChange={(e) =>
+                          setSelectedApplication((prev) =>
+                            prev
+                              ? { ...prev, companyWebsite: e.target.value }
+                              : prev
+                          )
+                        }
+                      />
+                    </Form.Group>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Role Link</Form.Label>
+                      <Form.Control
+                        type="text"
+                        value={selectedApplication?.roleLink || ""}
+                        onChange={(e) =>
+                          setSelectedApplication((prev) =>
+                            prev ? { ...prev, roleLink: e.target.value } : prev
+                          )
+                        }
+                      />
+                    </Form.Group>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Work Type</Form.Label>
+                      <Select
+                        options={[
+                          { value: "Remote", label: "Remote" },
+                          { value: "Hybrid", label: "Hybrid" },
+                          { value: "Office", label: "Office" },
+                        ]}
+                        value={{
+                          value: selectedApplication?.workType || "",
+                          label: selectedApplication?.workType || "",
+                        }}
+                        onChange={(opt) =>
+                          setSelectedApplication((prev) =>
+                            prev ? { ...prev, workType: opt?.value || "" } : prev
+                          )
+                        }
+                      />
+                    </Form.Group>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Contract Type</Form.Label>
+                      <Select
+                        options={[
+                          { value: "Full-time", label: "Full-time" },
+                          { value: "Part-time", label: "Part-time" },
+                          { value: "Contract", label: "Contract" },
+                          { value: "Internship", label: "Internship" },
+                        ]}
+                        value={{
+                          value: selectedApplication?.contractType || "",
+                          label: selectedApplication?.contractType || "",
+                        }}
+                        onChange={(opt) =>
+                          setSelectedApplication((prev) =>
+                            prev
+                              ? { ...prev, contractType: opt?.value || "" }
+                              : prev
+                          )
+                        }
+                      />
+                    </Form.Group>
+                    <Form.Group className="mb-3">
+                      <Form.Label>External Application</Form.Label>
+                      <Select
+                        options={[
+                          { value: "Yes", label: "Yes" },
+                          { value: "No", label: "No" },
+                        ]}
+                        value={{
+                          value: selectedApplication?.external || "No",
+                          label: selectedApplication?.external || "No",
+                        }}
+                        onChange={(opt) =>
+                          setSelectedApplication((prev) =>
+                            prev ? { ...prev, external: opt?.value || "No" } : prev
+                          )
+                        }
+                      />
+                    </Form.Group>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Notes</Form.Label>
+                      <Form.Control
+                        as="textarea"
+                        rows={4}
+                        value={selectedApplication?.notes || ""}
+                        onChange={(e) =>
+                          setSelectedApplication((prev) =>
+                            prev ? { ...prev, notes: e.target.value } : prev
+                          )
+                        }
+                      />
+                    </Form.Group>
+                  </>
+                ) : (
+                  // VIEW MODE (Non-editable)
+                  <div>
+                    <p>
+                      <strong>Job Description:</strong>
+                      <br />
+                      {selectedApplication?.jobDescription || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Company Website:</strong>
+                      <br />
+                      {selectedApplication?.companyWebsite ? (
+                        <a
+                          href={selectedApplication.companyWebsite}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {selectedApplication.companyWebsite}
+                        </a>
+                      ) : (
+                        "N/A"
+                      )}
+                    </p>
+                    <p>
+                      <strong>Role Link:</strong>
+                      <br />
+                      {selectedApplication?.roleLink ? (
+                        <a
+                          href={selectedApplication.roleLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {selectedApplication.roleLink}
+                        </a>
+                      ) : (
+                        "N/A"
+                      )}
+                    </p>
+                    <p>
+                      <strong>Work Type:</strong>
+                      <br />
+                      {selectedApplication?.workType || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Contract Type:</strong>
+                      <br />
+                      {selectedApplication?.contractType || "N/A"}
+                    </p>
+                    <p>
+                      <strong>External Application:</strong>
+                      <br />
+                      {selectedApplication?.external || "No"}
+                    </p>
+                    <p>
+                      <strong>Notes:</strong>
+                      <br />
+                      {selectedApplication?.notes || "No notes available."}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </Modal.Body>
@@ -3281,6 +3432,21 @@ const JobApplicationTable: React.FC<JobApplicationTableProps> = ({
           <ToastContainer />
           {/* Rest of your component's JSX */}
         </>
+        <FilterConfigModal
+          show={showFilterModal}
+          onHide={() => setShowFilterModal(false)}
+          filterConfigs={filterConfigs}
+          onSave={handleSaveFilterConfig}
+          onDelete={deleteFilterConfig}
+          onLoad={handleLoadFilterConfig} // Add this line
+          currentConfig={{
+            filters: selectedFilters,
+            dateRange,
+            hideNegativeOutcomes,
+            selectedStages,
+            searchQuery,
+          }}
+        />
       </Container>
     );
   }

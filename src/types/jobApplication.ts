@@ -12,6 +12,7 @@ export interface JobApplication {
   daLu: number;                      // Days between application date and last update
   luNow: number;                      // Days between last update and today
   upcomingInterviewDate?: string;     // Next interview date (YYYY-MM-DD)
+  upcomingInterviewTime?: string;     // Add this new field
   lastCompletedStage: string;         // Current application stage
   notes?: string;                     // Additional notes
   external: string;                   // External application flag

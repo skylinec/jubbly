@@ -34,19 +34,22 @@ const InterviewCalendar: React.FC<InterviewCalendarProps> = ({ darkMode }) => {
   const [view, setView] = useState<View>("month");
 
   const events = allApplications
-    .filter((app) => app.upcomingInterviewDate && app.lastCompletedStage !== "Ghosted" && app.lastCompletedStage !== "Rejected")
+    .filter((app) => app.upcomingInterviewDate && 
+      !["Ghosted", "Rejected", "Dropped Out", "Offer Declined"].includes(app.lastCompletedStage))
     .map((app) => {
       const interviewDate = new Date(app.upcomingInterviewDate!);
-      // Set default time to 9 AM if no time is specified
-      if (interviewDate.getHours() === 0) {
+      
+      // Parse time if available, otherwise default to 9 AM
+      if (app.upcomingInterviewTime) {
+        const [hours, minutes] = app.upcomingInterviewTime.split(':');
+        interviewDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0);
+      } else {
         interviewDate.setHours(9, 0, 0);
       }
 
       return {
         id: app.id,
-        title: `${format(interviewDate, "HH:mm")} - ${app.employer}: ${
-          app.jobTitle
-        } (${app.lastCompletedStage})`,
+        title: `${format(interviewDate, "HH:mm")} - ${app.employer}: ${app.jobTitle} (${app.lastCompletedStage})`,
         start: interviewDate,
         end: new Date(interviewDate.getTime() + 60 * 60 * 1000), // Default 1-hour duration
         resource: app,
@@ -101,18 +104,32 @@ const InterviewCalendar: React.FC<InterviewCalendarProps> = ({ darkMode }) => {
         }}
         eventPropGetter={(event) => {
           const app = event.resource as JobApplication;
+          let backgroundColor = "#007bff"; // default color
+
+          switch (app.lastCompletedStage) {
+            case "Interview Offered":
+              backgroundColor = "#ffcc80";
+              break;
+            case "Interview 1":
+              backgroundColor = "#fff176";
+              break;
+            case "Interview 2":
+              backgroundColor = "#a5d6a7";
+              break;
+            case "Interview 3":
+              backgroundColor = "#80cbc4";
+              break;
+            case "Offer":
+              backgroundColor = "#81c784";
+              break;
+            case "Offer Accepted":
+              backgroundColor = "#66bb6a";
+              break;
+          }
+
           return {
             style: {
-              backgroundColor:
-                app.lastCompletedStage === "Interview Offered"
-                  ? "#ffcc80"
-                  : app.lastCompletedStage === "Interview 1"
-                  ? "#fff176"
-                  : app.lastCompletedStage === "Interview 2"
-                  ? "#a5d6a7"
-                  : app.lastCompletedStage === "Interview 3"
-                  ? "#80cbc4"
-                  : "#007bff",
+              backgroundColor,
               color: "black",
               borderRadius: "4px",
               border: "none",

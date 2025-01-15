@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.9
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.middlewares=cors-headers@file"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - jubbly-net
+    environment:
+      - "HOSTNAME=localhost"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`127.0.0.1`) || Host(`jubbly.localhost`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost/api
+      - HOST=localhost
+      - PORT=3000
+      - WDS_SOCKET_PORT=0
+      - CHOKIDAR_USEPOLLING=true  # Enable hot reloading in Docker
+    volumes:
+      - ./src:/app/src
+    networks:
+      - jubbly-net
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=5000"
+      - "traefik.http.middlewares.backend-strip.stripprefix.prefixes=/api"
+      - "traefik.http.routers.backend.middlewares=backend-strip"
+    volumes:
+      - ./src:/app/src
+      - ./job_applications.db:/app/job_applications.db
+      - ./backups:/app/backups  # Add this line to persist backups
+    environment:
+      - NODE_ENV=development
+      - SQLITE_DB_PATH=/app/job_applications.db
+      - HOST=localhost
+    networks:
+      - jubbly-net
+    depends_on:
+      - loki
+    # logging:
+    #   driver: loki:latest
+    #   options:
+    #     loki-url: "http://loki:3100/loki/api/v1/push"
+    #     loki-external-labels: service=backend
+
+  prometheus:
+    image: prom/prometheus:v2.44.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    networks:
+      - jubbly-net
+
+  grafana:
+    image: grafana/grafana:9.5.2
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3001:3000"
+    networks:
+      - jubbly-net
+    depends_on:
+      - prometheus
+      - loki
+
+  loki:
+    image: grafana/loki:2.8.2
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - jubbly-net
+
+  adminer:
+    image: adminer
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adminer.rule=Host(`db.jubbly.localhost`)"
+    ports:
+      - "8081:8080"
+    networks:
+      - jubbly-net
+
+networks:
+  jubbly-net:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  db_backups:
+    driver: local
