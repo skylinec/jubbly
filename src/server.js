@@ -94,6 +94,25 @@ const db = new sqlite3.Database("./job_applications.db", (err) => {
         console.log("Filter configs table ensured.");
       }
     });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS application_scores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        application_id INTEGER,
+        factor_id TEXT,
+        score INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (application_id) REFERENCES job_applications(id) ON DELETE CASCADE,
+        UNIQUE(application_id, factor_id)
+      )
+    `, (err) => {
+      if (err) {
+        console.error("Error creating application_scores table:", err.message);
+      } else {
+        console.log("Application scores table ensured.");
+      }
+    });
   }
 });
 
@@ -111,6 +130,30 @@ app.get("/applications", (req, res) => {
   });
 });
 
+app.get("/applications/scorecard", async (req, res) => {
+  try {
+    const interviewStages = [
+      "Recruiter Conversation/Screening",
+      "Online Assessment",
+      "Interview Offered",
+      "Interview 1",
+      "Interview 2",
+      "Interview 3",
+      "Offer",
+      "Offer Accepted",
+      "Offer Declined",
+    ];
+    // Example DB query with a Mongo collection:
+    // const results = await db.collection("applications").find({ lastCompletedStage: { $in: interviewStages } }).toArray();
+    
+    // Replace mock with real results
+    const results = []; // Replace with your DB query results
+    res.json(results);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load interview-stage applications" });
+  }
+});
 
 // Add a new job application
 app.post("/applications", camelToSnakeMiddleware, (req, res) => {
@@ -327,6 +370,139 @@ app.delete("/filter-configs/:id", (req, res) => {
     }
     res.json({ message: "Filter configuration deleted successfully." });
   });
+});
+
+app.get("/applications/:id/scores", (req, res) => {
+  const { id } = req.params;
+  console.log(`Fetching scores for application ${id}`);
+  
+  db.all(
+    "SELECT application_id, factor_id, score FROM application_scores WHERE application_id = ?",
+    [id],
+    (err, rows) => {
+      if (err) {
+        console.error("Error fetching scores:", err);
+        return res.status(500).json({ error: "Failed to fetch scores" });
+      }
+      
+      console.log(`Found ${rows.length} scores for application ${id}`);
+      
+      // Transform rows into expected format
+      const scores = {};
+      rows.forEach(row => {
+        scores[row.factor_id] = row.score;
+      });
+      
+      console.log('Returning scores:', { scores });
+      res.json({ scores });
+    }
+  );
+});
+
+app.post("/applications/:id/scores", (req, res) => {
+  const { id } = req.params;
+  const { scores } = req.body;
+
+  console.log(`Saving scores for application ${id}:`, scores);
+
+  if (!scores || typeof scores !== 'object') {
+    console.error('Invalid scores data received:', scores);
+    return res.status(400).json({ error: "Invalid scores data" });
+  }
+
+  db.serialize(() => {
+    const stmt = db.prepare(`
+      INSERT INTO application_scores (application_id, factor_id, score)
+      VALUES (?, ?, ?)
+      ON CONFLICT(application_id, factor_id) 
+      DO UPDATE SET 
+        score = excluded.score,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE application_id = ? AND factor_id = ?
+    `);
+
+    try {
+      db.run("BEGIN TRANSACTION");
+      
+      Object.entries(scores).forEach(([factorId, score]) => {
+        console.log(`Saving score for factor ${factorId}: ${score}`);
+        stmt.run([id, factorId, score, id, factorId], (err) => {
+          if (err) {
+            console.error(`Error saving score for factor ${factorId}:`, err);
+            throw err;
+          }
+        });
+      });
+
+      stmt.finalize();
+      db.run("COMMIT", (err) => {
+        if (err) {
+          console.error("Error committing transaction:", err);
+          return res.status(500).json({ error: "Failed to save scores" });
+        }
+        console.log(`Successfully saved scores for application ${id}`);
+        res.json({ 
+          message: "Scores updated successfully",
+          applicationId: id,
+          scores: scores
+        });
+      });
+    } catch (err) {
+      console.error("Error in score save transaction:", err);
+      db.run("ROLLBACK");
+      res.status(500).json({ error: "Failed to save scores" });
+    }
+  });
+});
+
+// Add delete score endpoint
+app.delete("/applications/:id/scores/:factorId", (req, res) => {
+  const { id, factorId } = req.params;
+  
+  db.run(
+    "DELETE FROM application_scores WHERE application_id = ? AND factor_id = ?",
+    [id, factorId],
+    (err) => {
+      if (err) {
+        console.error("Error deleting score:", err);
+        return res.status(500).json({ error: "Failed to delete score" });
+      }
+      res.json({ message: "Score deleted successfully" });
+    }
+  );
+});
+
+// Add batch scores endpoint
+app.get("/applications/batch-scores", (req, res) => {
+  const { ids } = req.query;
+  
+  if (!ids) {
+    return res.status(400).json({ error: "No application IDs provided" });
+  }
+
+  const applicationIds = ids.split(',');
+  
+  db.all(
+    "SELECT application_id, factor_id, score FROM application_scores WHERE application_id IN (?)",
+    [applicationIds],
+    (err, rows) => {
+      if (err) {
+        console.error("Error fetching batch scores:", err);
+        return res.status(500).json({ error: "Failed to fetch scores" });
+      }
+      
+      // Group scores by application
+      const scoresByApp = rows.reduce((acc, row) => {
+        if (!acc[row.application_id]) {
+          acc[row.application_id] = {};
+        }
+        acc[row.application_id][row.factor_id] = row.score;
+        return acc;
+      }, {});
+      
+      res.json({ scores: scoresByApp });
+    }
+  );
 });
 
 // WebSocket setup

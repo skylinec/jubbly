@@ -1,0 +1,144 @@
+.scorecard-page.dark {
+  background-color: #121212;
+  color: #ffffff;
+}
+
+.scorecard-page.dark .card {
+  background-color: #2a2a2a;
+  color: #ffffff;
+}
+
+.factors-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.progress {
+  height: 25px;
+  margin-top: 10px;
+}
+
+.form-range::-webkit-slider-thumb {
+  background: #007bff;
+}
+
+.form-range::-moz-range-thumb {
+  background: #007bff;
+}
+
+.dark .form-range::-webkit-slider-thumb {
+  background: #ffffff;
+}
+
+.dark .form-range::-moz-range-thumb {
+  background: #ffffff;
+}
+
+.compact-card {
+  font-size: 0.9rem;
+}
+
+.compact-card .card-header {
+  min-height: 40px;
+}
+
+.compact-card .form-range {
+  height: 1rem;
+  padding: 0;
+}
+
+.compact-card .progress {
+  margin-top: 5px;
+}
+
+.compact-card .badge {
+  display: inline-block;
+  white-space: normal;
+  text-align: left;
+  margin-top: 4px;
+  line-height: 1.2;
+  word-wrap: break-word;
+  max-width: 100%;
+}
+
+.compact-range {
+  height: 0.5rem !important;
+}
+
+.compact-range::-webkit-slider-thumb {
+  height: 12px !important;
+  width: 12px !important;
+  margin-top: -4px !important;
+}
+
+.compact-range::-moz-range-thumb {
+  height: 12px !important;
+  width: 12px !important;
+}
+
+.unrated {
+  opacity: 0.5;
+}
+
+.unrated:hover {
+  opacity: 1;
+}
+
+.factors-grid .form-label {
+  position: relative;
+  width: 100%;
+}
+
+.factors-grid .form-label[style*="cursor: pointer"] {
+  padding-right: 24px;
+}
+
+.factors-grid .form-label[style*="cursor: pointer"]::after {
+  content: "×";
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  font-weight: bold;
+  color: #dc3545;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+}
+
+.factors-grid .form-label[style*="cursor: pointer"]:hover::after {
+  opacity: 1;
+  transform: translateY(-50%) scale(1.2);
+}
+
+.factors-grid .form-label[style*="cursor: pointer"] .rating-value {
+  padding-right: 4px;
+  border-bottom: 1px dotted #6c757d;
+}
+
+.factors-grid .form-label[style*="cursor: pointer"]:hover .rating-value {
+  color: #dc3545;
+  border-bottom-color: #dc3545;
+}
+
+/* Add tooltip styles */
+[title] {
+  position: relative;
+  cursor: help;
+}
+
+[title]:hover::before {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+}

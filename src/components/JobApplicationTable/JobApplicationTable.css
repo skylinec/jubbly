@@ -474,3 +474,20 @@ table tbody tr.focused {
 .job-application-table.dark .react-select__multi-value__remove {
   color: #ffffff !important;
 }
+
+/* Loading indicator styles */
+.infinite-scroll-loading {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.spinner-border {
+  width: 2rem;
+  height: 2rem;
+}
+
+/* Optimize performance */
+.table-container, .card-container {
+  will-change: transform;
+  transform: translateZ(0);
+}
